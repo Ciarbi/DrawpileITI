@@ -3,11 +3,16 @@
 #define DESKTOP_TOOLWIDGETS_FILL_H
 #include "desktop/toolwidgets/toolsettings.h"
 
+#include <QComboBox>
+#include <QImage>
+#include <QString>
+
 class BlendModeManager;
 class QAction;
 class QButtonGroup;
 class QLabel;
 class QMenu;
+class QPushButton;
 class QStackedWidget;
 class Ui_FillSettings;
 
@@ -70,7 +75,6 @@ protected:
 private:
 	void updateTolerance();
 	void updateSettings();
-
 	void updateSize();
 	static bool isSizeUnlimited(int size);
 	int calculatePixelSize(int size) const;
@@ -79,20 +83,28 @@ private:
 	void setDragState(bool dragging, int tolerance);
 	void updateWidgets();
 
+	void updateTextureComboDisplay();
+	void browseTextureImage();
+
 	QWidget *m_headerWidget = nullptr;
 	QStackedWidget *m_stack;
 	Ui_FillSettings *m_ui = nullptr;
 	QMenu *m_menu = nullptr;
 	QLabel *m_permissionDeniedLabel = nullptr;
+	QLabel *m_textureFileLabel = nullptr;
 	QAction *m_editableAction = nullptr;
 	QAction *m_confirmAction = nullptr;
 	QButtonGroup *m_sourceGroup = nullptr;
 	QButtonGroup *m_areaGroup = nullptr;
+	QComboBox *m_textureSourceCombo = nullptr;
+	QPushButton *m_textureBrowseButton = nullptr;
 	BlendModeManager *m_blendModeManager = nullptr;
 	int m_toleranceBeforeDrag = -1;
 	qreal m_quickAdjust1 = 0.0;
 	qreal m_quickAdjust2 = 0.0;
 	qreal m_quickAdjust3 = 0.0;
+	QImage m_textureImage;
+	QString m_textureImagePath;
 	bool m_featureAccess = true;
 	bool m_haveSelection = false;
 	bool m_updating = false;
