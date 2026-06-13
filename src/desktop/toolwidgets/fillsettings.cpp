@@ -39,16 +39,13 @@ static const ToolProperties::RangedValue<int> expand{
 	blendMode{
 		QStringLiteral("blendMode"), DP_BLEND_MODE_NORMAL, 0,
 		DP_BLEND_MODE_MAX},
-	size{QStringLiteral("limit"), 5000, 10, 5000},
-	opacity{QStringLiteral("opacity"), 100, 1, 100},
-	gap{QStringLiteral("gap"), 0, 0, 32},
-	source{QStringLiteral("source"), 2, 0, 3},
-	texture{QStringLiteral("texture"), 0, 0, 2},
-	area{QStringLiteral("area"), 0, 0, 2},
-	kernel{QStringLiteral("kernel"), 0, 0, 1};
-static const ToolProperties::Value<QString> textureImage{
-	QStringLiteral("textureImage"), QString()};
-static const ToolProperties::RangedValue<double> tolerance{
+size{QStringLiteral("limit"), 5000, 10, 5000},
+		opacity{QStringLiteral("opacity"), 100, 1, 100},
+		gap{QStringLiteral("gap"), 0, 0, 32},
+		source{QStringLiteral("source"), 2, 0, 3},
+		area{QStringLiteral("area"), 0, 0, 2},
+		kernel{QStringLiteral("kernel"), 0, 0, 1};
+	static const ToolProperties::RangedValue<double> tolerance{
 	QStringLiteral("tolerance"), 0.0, 0.0, 1.0};
 }
 
@@ -122,9 +119,6 @@ QWidget *FillSettings::createUiWidget(QWidget *parent)
 	m_textureSourceCombo = m_ui->textureSourceCombo;
 	m_textureBrowseButton = m_ui->textureBrowseButton;
 	m_textureFileLabel = m_ui->textureFileLabel;
-	m_textureSourceCombo->addItem(tr("Solid Color"));
-	m_textureSourceCombo->addItem(tr("Image"));
-	m_textureSourceCombo->addItem(tr("Layer"));
 	connect(
 		m_textureBrowseButton, &QPushButton::clicked, this,
 		&FillSettings::browseTextureImage);
@@ -395,8 +389,6 @@ ToolProperties FillSettings::saveToolSettings()
 						   ? int(FloodFill::Source::CurrentLayer)
 						   : source);
 	cfg.setValue(props::area, m_areaGroup->checkedId());
-	cfg.setValue(props::texture, m_textureSourceCombo->currentIndex());
-	cfg.setValue(props::textureImage, m_textureImagePath);
 	return cfg;
 }
 
@@ -433,16 +425,6 @@ void FillSettings::restoreToolSettings(const ToolProperties &cfg)
 
 	checkGroupButton(m_sourceGroup, cfg.value(props::source));
 	checkGroupButton(m_areaGroup, cfg.value(props::area));
-
-	int textureIndex = cfg.value(props::texture);
-	if(textureIndex >= 0 && textureIndex <= 2) {
-		m_textureSourceCombo->setCurrentIndex(textureIndex);
-	}
-	m_textureImagePath = cfg.value(props::textureImage);
-	if(!m_textureImagePath.isEmpty()) {
-		m_textureImage.load(m_textureImagePath);
-	}
-	updateTextureComboDisplay();
 
 	pushSettings();
 }
@@ -574,9 +556,13 @@ void FillSettings::browseTextureImage()
 		tr("Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"));
 	if(!path.isEmpty()) {
 		m_textureImagePath = path;
-		m_textureImage.load(path);
-		updateTextureComboDisplay();
-		updateSettings();
+		if(m_textureImage.load(path)) {
+			updateTextureComboDisplay();
+			updateSettings();
+		} else {
+			m_textureImagePath.clear();
+			qWarning("Failed to load texture image: %s", qUtf8Printable(path));
+		}
 	}
 }
 

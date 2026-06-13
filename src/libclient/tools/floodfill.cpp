@@ -244,7 +244,10 @@ void FloodFill::setParameters(
 	bool needsRefill = tolerance != m_tolerance || expansion != m_expansion ||
 					   kernel != m_kernel || featherRadius != m_featherRadius ||
 					   size != m_size || gap != m_gap || source != m_source ||
-					   area != m_area || textureSource != m_textureSource;
+					   area != m_area;
+	bool needsTextureUpdate = textureSource != m_textureSource ||
+							  (textureSource == FillTextureSource::Image && textureImage != m_textureImage) ||
+							  textureLayerId != m_textureLayerId;
 	m_editableFills = editableFills;
 
 	if(confirmFills != m_confirmFills) {
@@ -255,7 +258,7 @@ void FloodFill::setParameters(
 	if(needsUpdate) {
 		m_opacity = opacity;
 		m_blendMode = blendMode;
-		if(!needsRefill) {
+		if(!needsRefill && !needsTextureUpdate) {
 			updatePendingPreview();
 		}
 	}
@@ -269,10 +272,12 @@ void FloodFill::setParameters(
 		m_gap = gap;
 		m_source = source;
 		m_area = area;
+		repeatFill();
+	} else if(needsTextureUpdate) {
 		m_textureSource = textureSource;
 		m_textureImage = textureImage;
 		m_textureLayerId = textureLayerId;
-		repeatFill();
+		updatePendingPreview();
 	}
 }
 
@@ -492,22 +497,26 @@ void FloodFill::adjustPendingImage(bool adjustColor, bool adjustOpacity,
 {
 	QColor color = m_owner.foregroundColor();
 	qreal opacity = m_pendingEditable ? m_opacity : m_originalOpacity;
+	bool isTextureMode = m_textureSource == FillTextureSource::Image ||
+						 m_textureSource == FillTextureSource::Layer;
 	bool needsColorChange = adjustColor && blendModeHandlesColor(m_blendMode) &&
-							m_pendingColor != color;
+							m_pendingColor != color && !isTextureMode;
 	bool needsOpacityChange = adjustOpacity && opacity < 1.0;
 	bool needsTextureApply = adjustTexture && !m_textureImage.isNull() &&
-						   (m_textureSource == FillTextureSource::Image ||
-							m_textureSource == FillTextureSource::Layer);
+						   isTextureMode;
 	if(needsColorChange || needsOpacityChange || needsTextureApply) {
 		QPainter painter(&m_pendingImage);
 		QRect rect = m_pendingImage.rect();
 		if(needsTextureApply) {
+			QImage textureFill(m_pendingImage.size(), QImage::Format_ARGB32_Premultiplied);
+			textureFill.fill(Qt::transparent);
 			QPixmap pixmap = QPixmap::fromImage(m_textureImage);
-			painter.setBrush(QBrush(pixmap));
-			painter.setCompositionMode(QPainter::CompositionMode_Source);
-			painter.drawRect(rect);
-		}
-		if(needsColorChange) {
+			QPainter tmpPainter(&textureFill);
+			tmpPainter.setCompositionMode(QPainter::CompositionMode_Source);
+			tmpPainter.drawTiledPixmap(rect, pixmap);
+			painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+			painter.drawImage(rect.topLeft(), textureFill);
+		} else if(needsColorChange) {
 			painter.setCompositionMode(QPainter::CompositionMode_SourceAtop);
 			painter.fillRect(rect, color);
 			m_pendingColor = color;
