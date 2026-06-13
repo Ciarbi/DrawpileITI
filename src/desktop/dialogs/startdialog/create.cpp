@@ -6,9 +6,13 @@
 #include "desktop/widgets/kis_slider_spin_box.h"
 #include "libclient/config/config.h"
 #include "libclient/utils/images.h"
+#include <QComboBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
+#include <QSignalBlocker>
+#include <QToolButton>
 #include <QtColorWidgets/ColorPreview>
 
 using color_widgets::ColorDialog;
@@ -16,6 +20,28 @@ using color_widgets::ColorPreview;
 
 namespace dialogs {
 namespace startdialog {
+
+namespace {
+
+struct PresetSize {
+	const char *name;
+	int width;
+	int height;
+};
+
+static const PresetSize presetSizes[] = {
+	{"Square 1024px", 1024, 1024},
+	{"HD", 1280, 720},
+	{"Full HD", 1920, 1080},
+	{"2K", 2048, 1080},
+	{"4K UHD", 3840, 2160},
+	{"8K UHD", 7680, 4320},
+	{"Square 512px", 512, 512},
+	{"Square 2048px", 2048, 2048},
+	{"Square 4096px", 4096, 4096},
+};
+
+}
 
 Create::Create(QWidget *parent)
 	: Page{parent}
@@ -41,14 +67,27 @@ Create::Create(QWidget *parent)
 	m_heightSpinner->setFastSliderStep(10);
 	heightLayout->addWidget(m_heightSpinner);
 	heightLayout->addWidget(new QLabel(tr("px")), 1);
+	m_swapButton = new QToolButton;
+	m_swapButton->setIcon(QIcon::fromTheme(QStringLiteral("view-refresh")));
+	m_swapButton->setToolTip(tr("Swap width and height"));
+	heightLayout->addWidget(m_swapButton);
+
+	m_presetCombo = new QComboBox;
+	m_presetCombo->setMaximumWidth(600);
+	for(const PresetSize &preset : presetSizes) {
+		m_presetCombo->addItem(QString::fromUtf8(preset.name));
+	}
+	layout->addRow(tr("Preset:"), m_presetCombo);
 
 	DrawpileApp &app = dpApp();
 	QSize lastSize = app.safeNewCanvasSize();
 	bool lastSizeValid =
 		lastSize.isValid() && ResizeDialog::checkDimensions(
 								  lastSize.width(), lastSize.height(), false);
-	m_widthSpinner->setValue(lastSizeValid ? lastSize.width() : 1920);
-	m_heightSpinner->setValue(lastSizeValid ? lastSize.height() : 1080);
+	m_widthSpinner->setValue(lastSizeValid ? lastSize.width() : 1024);
+	m_heightSpinner->setValue(lastSizeValid ? lastSize.height() : 1024);
+	m_customDimensions = false;
+	m_applyingPreset = false;
 
 	m_backgroundPreview =
 		makeBackgroundPreview(app.config()->getNewCanvasBackColor());
@@ -61,14 +100,43 @@ Create::Create(QWidget *parent)
 	layout->addRow(m_errorLabel);
 
 	connect(
+		m_presetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+		[this](int index) {
+			bool hasCustom =
+				m_presetCombo->count() > 0 &&
+				m_presetCombo->itemText(0) == tr("Custom");
+			int presetIndex = index - (hasCustom ? 1 : 0);
+			if(presetIndex < 0) {
+				return;
+			}
+
+			const PresetSize &preset = presetSizes[presetIndex];
+			m_applyingPreset = true;
+			m_customDimensions = false;
+			m_widthSpinner->setValue(preset.width);
+			m_heightSpinner->setValue(preset.height);
+			m_applyingPreset = false;
+			updatePresetCombo();
+		});
+	auto dimensionsChanged = [this](int) {
+		if(!m_applyingPreset) {
+			m_customDimensions = true;
+			updatePresetCombo();
+		}
+		updateCreateButton();
+	};
+	connect(
 		m_widthSpinner, QOverload<int>::of(&KisSliderSpinBox::valueChanged),
-		this, &Create::updateCreateButton);
+		this, dimensionsChanged);
 	connect(
 		m_heightSpinner, QOverload<int>::of(&KisSliderSpinBox::valueChanged),
-		this, &Create::updateCreateButton);
+		this, dimensionsChanged);
+	connect(m_swapButton, &QToolButton::clicked, this, &Create::swapDimensions);
 	connect(
 		m_backgroundPreview, &ColorPreview::clicked, this,
 		&Create::showColorPicker);
+	updatePresetCombo();
+	updateCreateButton();
 }
 
 void Create::activate()
@@ -85,6 +153,44 @@ void Create::accept()
 	cfg->setNewCanvasSize(size);
 	cfg->setNewCanvasBackColor(backgroundColor);
 	emit create(size, backgroundColor);
+}
+
+void Create::updatePresetCombo()
+{
+	int presetIndex = -1;
+	QSize size{m_widthSpinner->value(), m_heightSpinner->value()};
+	for(size_t i = 0; i < sizeof(presetSizes) / sizeof(presetSizes[0]); ++i) {
+		const PresetSize &preset = presetSizes[i];
+		if(preset.width == size.width() && preset.height == size.height()) {
+			presetIndex = int(i);
+			break;
+		}
+	}
+
+	if(m_customDimensions || presetIndex < 0) {
+		if(m_presetCombo->count() == 0 ||
+		   m_presetCombo->itemText(0) != tr("Custom")) {
+			QSignalBlocker blocker(m_presetCombo);
+			m_presetCombo->insertItem(0, tr("Custom"));
+		}
+	} else if(m_presetCombo->count() > 0 &&
+			  m_presetCombo->itemText(0) == tr("Custom")) {
+		QSignalBlocker blocker(m_presetCombo);
+		m_presetCombo->removeItem(0);
+	}
+
+	QSignalBlocker blocker(m_presetCombo);
+	m_presetCombo->setCurrentIndex(m_customDimensions || presetIndex < 0
+									   ? 0
+									   : presetIndex);
+}
+
+void Create::swapDimensions()
+{
+	int width = m_widthSpinner->value();
+	m_customDimensions = true;
+	m_widthSpinner->setValue(m_heightSpinner->value());
+	m_heightSpinner->setValue(width);
 }
 
 color_widgets::ColorPreview *Create::makeBackgroundPreview(const QColor &color)

@@ -310,66 +310,89 @@
      </property>
     </widget>
    </item>
-<item row="12" column="1">
-     <layout class="QHBoxLayout" name="textureLayout">
-      <property name="spacing">
-       <number>0</number>
-      </property>
+   <item row="12" column="1">
+      <layout class="QHBoxLayout" name="textureLayout">
+       <property name="spacing">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QComboBox" name="textureSourceCombo">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>24</width>
+           <height>0</height>
+          </size>
+         </property>
+         <item>
+          <property name="text">
+           <string>Solid Color</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Image</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Layer</string>
+          </property>
+         </item>
+        </widget>
+       </item>
       <item>
-       <widget class="QComboBox" name="textureSourceCombo">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
+       <widget class="QPushButton" name="textureBrowseButton">
+        <property name="text">
+         <string>...</string>
         </property>
-        <property name="minimumSize">
-         <size>
-          <width>24</width>
-          <height>0</height>
-         </size>
+        <property name="maximumWidth">
+         <number>30</number>
         </property>
-        <item>
-         <property name="text">
-          <string>Solid Color</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>Image</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>Layer</string>
-         </property>
-        </item>
        </widget>
       </item>
-     <item>
-      <widget class="QPushButton" name="textureBrowseButton">
-       <property name="text">
-        <string>...</string>
-       </property>
-       <property name="maximumWidth">
-        <number>30</number>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-    <item row="13" column="0" colspan="2">
+     </layout>
+    </item>
+    <item row="13" column="0">
+     <widget class="QLabel" name="textureLayerLabel">
+      <property name="text">
+       <string>Layer:</string>
+      </property>
+     </widget>
+    </item>
+    <item row="13" column="1">
+     <widget class="QComboBox" name="textureLayerCombo">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>24</width>
+        <height>0</height>
+       </size>
+      </property>
+     </widget>
+    </item>
+    <item row="14" column="0" colspan="2">
      <widget class="QLabel" name="textureFileLabel">
-     <property name="text">
-      <string></string>
-     </property>
-     <property name="margin">
-      <number>2</number>
-     </property>
-    </widget>
-   </item>
-   <item row="14" column="0" colspan="2">
-    <layout class="QHBoxLayout" name="applyCancelLayout">
+      <property name="text">
+       <string></string>
+      </property>
+      <property name="margin">
+       <number>2</number>
+      </property>
+     </widget>
+    </item>
+    <item row="15" column="0" colspan="2">
+     <layout class="QHBoxLayout" name="applyCancelLayout">
      <item>
       <widget class="QPushButton" name="applyButton">
        <property name="toolTip">
@@ -398,7 +421,7 @@
      </item>
     </layout>
    </item>
-   <item row="15" column="0" colspan="2">
+   <item row="16" column="0" colspan="2">
     <spacer name="bottomSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
@@ -496,6 +519,7 @@
   <tabstop>alphaPreserve</tabstop>
 <tabstop>blendModeCombo</tabstop>
    <tabstop>textureSourceCombo</tabstop>
+   <tabstop>textureLayerCombo</tabstop>
    <tabstop>textureBrowseButton</tabstop>
    <tabstop>applyButton</tabstop>
   <tabstop>cancelButton</tabstop>

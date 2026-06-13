@@ -74,6 +74,7 @@ extern "C" {
 #include "desktop/widgets/projectrecordingstatusbutton.h"
 #include "desktop/widgets/viewstatus.h"
 #include "desktop/widgets/viewstatusbar.h"
+#include "libclient/canvas/acl.h"
 #include "libclient/canvas/blendmodes.h"
 #include "libclient/canvas/canvasmodel.h"
 #include "libclient/canvas/documentmetadata.h"
@@ -5468,9 +5469,51 @@ void MainWindow::pasteImage(
 			force);
 		if(!srcBounds.isEmpty() &&
 		   m_doc->checkPermission(DP_FEATURE_PUT_IMAGE)) {
-			m_dockToolSettings->startTransformPaste(
-				srcBounds,
-				image.convertToFormat(QImage::Format_ARGB32_Premultiplied));
+			canvas::AclState *acl = canvas->aclState();
+			if(!acl ||
+			   !(acl->canUseFeature(DP_FEATURE_EDIT_LAYERS) ||
+				 acl->canUseFeature(DP_FEATURE_OWN_LAYERS))) {
+				m_doc->checkPermission(DP_FEATURE_EDIT_LAYERS);
+				return;
+			}
+
+			canvas::LayerListModel *layers = canvas->layerlist();
+			QVector<int> ids = layers->getAvailableLayerIds(1);
+			if(ids.isEmpty()) {
+				qWarning("pasteImage: no available layer IDs");
+				return;
+			}
+
+			int newLayerId = ids.first();
+			int activeLayer = m_doc->toolCtrl()->activeLayer();
+			int targetLayer = activeLayer > 0 ? activeLayer : 0;
+			uint8_t flags = 0;
+			QModelIndex targetIndex = layers->layerIndex(targetLayer);
+			if(targetIndex.isValid() &&
+			   targetIndex.data(canvas::LayerListModel::IsGroupRole).toBool()) {
+				flags |= DP_MSG_LAYER_TREE_CREATE_FLAGS_INTO;
+			}
+
+			QImage argbImage =
+				image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+			net::MessageList msgs;
+			msgs.reserve(3);
+			msgs.append(net::makeUndoPointMessage(canvas->localUserId()));
+			msgs.append(net::makeLayerTreeCreateMessage(
+				canvas->localUserId(), newLayerId, 0, targetLayer, 0, flags,
+				layers->getAvailableLayerName(QStringLiteral("Pasted Image"))));
+
+			int putMessageCount = msgs.size();
+			net::makePutImageMessagesCompat(
+				msgs, canvas->localUserId(), newLayerId, DP_BLEND_MODE_NORMAL,
+				srcBounds.x(), srcBounds.y(), argbImage,
+				canvas->isCompatibilityMode());
+			if(msgs.size() == putMessageCount) {
+				return;
+			}
+
+			layers->setLayerIdToSelect(newLayerId);
+			m_doc->client()->sendCommands(msgs.size(), msgs.constData());
 		}
 	}
 }

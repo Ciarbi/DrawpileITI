@@ -117,11 +117,30 @@ QWidget *FillSettings::createUiWidget(QWidget *parent)
 	utils::setWidgetRetainSizeWhenHidden(m_ui->sourceFillSource, true);
 
 	m_textureSourceCombo = m_ui->textureSourceCombo;
+	m_textureLayerCombo = m_ui->textureLayerCombo;
 	m_textureBrowseButton = m_ui->textureBrowseButton;
 	m_textureFileLabel = m_ui->textureFileLabel;
 	connect(
 		m_textureBrowseButton, &QPushButton::clicked, this,
 		&FillSettings::browseTextureImage);
+	connect(
+		m_textureLayerCombo,
+		QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+		[this](int index) {
+			m_textureLayerId = m_textureLayerCombo->itemData(index).toInt();
+			updateSettings();
+		});
+	connect(
+		controller(), &ToolController::activeLayerChanged, this,
+		&FillSettings::updateTextureLayerCombo);
+	connect(
+		controller(), &ToolController::modelChanged, this,
+		&FillSettings::updateTextureLayerCombo);
+	if(canvas::CanvasModel *canvas = controller()->model()) {
+		connect(
+			canvas->layerlist(), &canvas::LayerListModel::layersChanged, this,
+			&FillSettings::updateTextureLayerCombo);
+	}
 	connect(
 		m_textureSourceCombo,
 		QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -136,6 +155,7 @@ QWidget *FillSettings::createUiWidget(QWidget *parent)
 		m_textureSourceCombo->currentIndex() ==
 		int(FloodFill::FillTextureSource::Image));
 	updateTextureComboDisplay();
+	updateTextureLayerCombo();
 
 	m_sourceGroup = new QButtonGroup(this);
 	m_sourceGroup->setExclusive(true);
@@ -298,11 +318,10 @@ void FillSettings::pushSettings()
 	int textureLayerId = 0;
 	QImage textureImg;
 	if(textureSource == FloodFill::FillTextureSource::Layer) {
-		canvas::LayerListModel *layerlist = canvas ? canvas->layerlist() : nullptr;
-		textureLayerId = layerlist ? layerlist->fillSourceLayerId() : 0;
-		if(textureLayerId == 0) {
-			textureSource = FloodFill::FillTextureSource::SolidColor;
-		} else if(canvas) {
+		textureLayerId = m_textureLayerCombo
+							 ? m_textureLayerCombo->currentData().toInt()
+							 : 0;
+		if(textureLayerId > 0 && canvas) {
 			textureImg = canvas->paintEngine()->getLayerImage(textureLayerId);
 		}
 	} else if(textureSource == FloodFill::FillTextureSource::Image) {
@@ -364,6 +383,9 @@ void FillSettings::updateFillSourceLayerId(int layerId)
 		m_ui->sourceFillSource->click();
 	} else {
 		m_ui->sourceLayer->click();
+	}
+	if(m_textureLayerId == 0) {
+		updateTextureLayerCombo();
 	}
 }
 
@@ -531,6 +553,12 @@ void FillSettings::updateWidgets()
 
 void FillSettings::updateTextureComboDisplay()
 {
+	bool isLayerTexture = m_textureSourceCombo->currentIndex() ==
+						  int(FloodFill::FillTextureSource::Layer);
+	m_ui->textureLayerLabel->setVisible(isLayerTexture);
+	m_ui->textureLayerCombo->setVisible(isLayerTexture);
+	m_ui->textureLayerCombo->setEnabled(
+		isLayerTexture && m_ui->textureLayerCombo->count() > 0);
 	if(m_textureSourceCombo->currentIndex() ==
 	   int(FloodFill::FillTextureSource::Image)) {
 		QString filename = QFileInfo(m_textureImagePath).fileName();
@@ -545,6 +573,47 @@ void FillSettings::updateTextureComboDisplay()
 	} else {
 		m_textureFileLabel->clear();
 		m_textureFileLabel->setToolTip(QString());
+	}
+}
+
+void FillSettings::updateTextureLayerCombo()
+{
+	canvas::CanvasModel *canvas = controller()->model();
+	canvas::LayerListModel *layerlist = canvas ? canvas->layerlist() : nullptr;
+	const QVector<canvas::LayerListItem> &items =
+		layerlist ? layerlist->layerItems()
+				  : QVector<canvas::LayerListItem>{};
+	int preferredId = m_textureLayerId;
+	if(preferredId == 0) {
+		preferredId = layerlist ? layerlist->fillSourceLayerId() : 0;
+	}
+	if(preferredId == 0) {
+		preferredId = controller()->activeLayer();
+	}
+
+	QSignalBlocker blocker(m_textureLayerCombo);
+	m_textureLayerCombo->clear();
+	bool foundPreferred = false;
+	for(const canvas::LayerListItem &item : items) {
+		if(item.id > 0 && !item.group) {
+			m_textureLayerCombo->addItem(item.titleWithColor(), item.id);
+			if(item.id == preferredId) {
+				m_textureLayerCombo->setCurrentIndex(
+					m_textureLayerCombo->count() - 1);
+				foundPreferred = true;
+			}
+		}
+	}
+	if(!foundPreferred) {
+		m_textureLayerId = 0;
+		m_textureLayerCombo->addItem(tr("(none selected)"), 0);
+		m_textureLayerCombo->setCurrentIndex(0);
+	} else {
+		m_textureLayerId = preferredId;
+	}
+	updateTextureComboDisplay();
+	if(m_sourceGroup && m_areaGroup && m_blendModeManager) {
+		updateSettings();
 	}
 }
 

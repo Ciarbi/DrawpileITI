@@ -84,6 +84,7 @@ private:
 	void updateWidgets();
 
 	void updateTextureComboDisplay();
+	void updateTextureLayerCombo();
 	void browseTextureImage();
 
 	QWidget *m_headerWidget = nullptr;
@@ -97,6 +98,7 @@ private:
 	QButtonGroup *m_sourceGroup = nullptr;
 	QButtonGroup *m_areaGroup = nullptr;
 	QComboBox *m_textureSourceCombo = nullptr;
+	QComboBox *m_textureLayerCombo = nullptr;
 	QPushButton *m_textureBrowseButton = nullptr;
 	BlendModeManager *m_blendModeManager = nullptr;
 	int m_toleranceBeforeDrag = -1;
@@ -105,6 +107,7 @@ private:
 	qreal m_quickAdjust3 = 0.0;
 	QImage m_textureImage;
 	QString m_textureImagePath;
+	int m_textureLayerId = 0;
 	bool m_featureAccess = true;
 	bool m_haveSelection = false;
 	bool m_updating = false;
