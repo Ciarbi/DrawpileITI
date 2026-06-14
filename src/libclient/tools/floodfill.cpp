@@ -240,27 +240,31 @@ void FloodFill::setParameters(
 	bool editableFills, bool confirmFills,
 	FillTextureSource textureSource, const QImage &textureImage, int textureLayerId)
 {
-	bool needsUpdate = opacity != m_opacity || blendMode != m_blendMode;
+	bool opacityChanged = opacity != m_opacity;
+	bool blendModeChanged = blendMode != m_blendMode;
+	bool textureImageChanged = textureImage != m_textureImage;
+	bool needsTextureUpdate = textureSource != m_textureSource ||
+							  textureLayerId != m_textureLayerId ||
+							  textureImageChanged;
 	bool needsRefill = tolerance != m_tolerance || expansion != m_expansion ||
 					   kernel != m_kernel || featherRadius != m_featherRadius ||
 					   size != m_size || gap != m_gap || source != m_source ||
 					   area != m_area;
-	bool needsTextureUpdate = textureSource != m_textureSource ||
-							  (textureSource == FillTextureSource::Image && textureImage != m_textureImage) ||
-							  textureLayerId != m_textureLayerId;
 	m_editableFills = editableFills;
+	m_textureSource = textureSource;
+	m_textureImage = textureImage;
+	m_textureLayerId = textureLayerId;
 
 	if(confirmFills != m_confirmFills) {
 		m_confirmFills = confirmFills;
 		updateCursor();
 	}
 
-	if(needsUpdate) {
+	if(opacityChanged) {
 		m_opacity = opacity;
+	}
+	if(blendModeChanged) {
 		m_blendMode = blendMode;
-		if(!needsRefill && !needsTextureUpdate) {
-			updatePendingPreview();
-		}
 	}
 
 	if(needsRefill) {
@@ -273,10 +277,7 @@ void FloodFill::setParameters(
 		m_source = source;
 		m_area = area;
 		repeatFill();
-	} else if(needsTextureUpdate) {
-		m_textureSource = textureSource;
-		m_textureImage = textureImage;
-		m_textureLayerId = textureLayerId;
+	} else if(needsTextureUpdate || opacityChanged || blendModeChanged) {
 		updatePendingPreview();
 	}
 }
