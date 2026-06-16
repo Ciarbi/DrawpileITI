@@ -59,7 +59,18 @@ Create::Create(QWidget *parent)
 	for(const PresetSize &preset : presetSizes) {
 		m_presetCombo->addItem(QString::fromUtf8(preset.name));
 	}
-	layout->addRow(tr("Size:"), m_presetCombo);
+	QHBoxLayout *swapButtonLayout = new QHBoxLayout;
+	m_swapButton = new QToolButton;
+	m_swapButton->setIcon(QIcon::fromTheme(QStringLiteral("page-orientation-icon-85194-512")));
+	m_swapButton->setToolTip(tr("Swap Orientation"));
+	swapButtonLayout->addWidget(m_swapButton);
+
+	QHBoxLayout *sizeLayout = new QHBoxLayout;
+	sizeLayout->addWidget(m_presetCombo);
+	sizeLayout->addLayout(swapButtonLayout);
+	sizeLayout->addStretch(1);
+
+	layout->addRow(tr("Size:"), sizeLayout);
 
 	QHBoxLayout *widthLayout = new QHBoxLayout;
 	layout->addRow(tr("Width:"), widthLayout);
@@ -69,15 +80,6 @@ Create::Create(QWidget *parent)
 	m_widthSpinner->setFastSliderStep(10);
 	widthLayout->addWidget(m_widthSpinner);
 	widthLayout->addWidget(new QLabel(tr("px")), 1);
-
-	QHBoxLayout *swapButtonLayout = new QHBoxLayout;
-	layout->addRow(swapButtonLayout);
-	m_swapButton = new QToolButton;
-	m_swapButton->setIcon(QIcon::fromTheme(QStringLiteral("view-refresh")));
-	m_swapButton->setToolTip(tr("Swap width and height"));
-	swapButtonLayout->addStretch(1);
-	swapButtonLayout->addWidget(m_swapButton);
-	swapButtonLayout->addStretch(5);
 
 	QHBoxLayout *heightLayout = new QHBoxLayout;
 	layout->addRow(tr("Height:"), heightLayout);

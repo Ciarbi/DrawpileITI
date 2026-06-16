@@ -108,6 +108,7 @@ struct ChatWidget::Private {
 	QAction *detachOnTopAction = nullptr;
 	QAction *detachAlwaysOnTopAction = nullptr;
 	QAction *muteAction = nullptr;
+	QAction *chatPositionMenuAction = nullptr;
 
 	QList<int> announcedUsers;
 	canvas::CanvasModel *canvas = nullptr;
@@ -284,6 +285,14 @@ ChatWidget::ChatWidget(bool smallScreenMode, QWidget *parent)
 		tr("Mute notifications"), this, &ChatWidget::muteChanged);
 	d->muteAction->setStatusTip(tr("Toggle notifications for this window"));
 	d->muteAction->setCheckable(true);
+
+	d->chatPositionMenuAction = d->externalMenu->addAction(tr("Chat position"));
+	QMenu *chatPositionMenu = new QMenu(this);
+	d->chatPositionMenuAction->setMenu(chatPositionMenu);
+	chatPositionMenu->addAction(
+		tr("Top"), this, &ChatWidget::setChatPositionTop);
+	chatPositionMenu->addAction(
+		tr("Bottom"), this, &ChatWidget::setChatPositionBottom);
 
 	connect(
 		d->externalMenu, &QMenu::aboutToShow, this,
@@ -1103,8 +1112,8 @@ void ChatWidget::showChatContextMenu(const QPoint &pos)
 	menu->addSeparator();
 
 	QAction *actions[] = {
-		d->clearAction, d->compactAction, d->attachAction, d->detachMenuAction,
-		d->muteAction};
+		d->clearAction, d->compactAction, d->attachAction,
+		d->detachMenuAction, d->muteAction, d->chatPositionMenuAction};
 	for(QAction *action : actions) {
 		if(action && action->isVisible()) {
 			menu->addAction(action);
@@ -1346,6 +1355,20 @@ void ChatWidget::notifySanitize(
 		clean.append(QStringLiteral("…"));
 	}
 	notify(event, clean);
+}
+
+void ChatWidget::setChatPositionTop()
+{
+	if(parent()) {
+		emit requestChatPositionTop();
+	}
+}
+
+void ChatWidget::setChatPositionBottom()
+{
+	if(parent()) {
+		emit requestChatPositionBottom();
+	}
 }
 
 void ChatWidget::notify(notification::Event event, const QString &message)

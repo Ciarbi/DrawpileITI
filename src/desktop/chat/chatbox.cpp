@@ -99,6 +99,12 @@ ChatBox::ChatBox(Document *doc, bool smallScreenMode, QWidget *parent)
 	});
 	connect(
 		m_chatWidget, &ChatWidget::muteChanged, this, &ChatBox::muteChanged);
+	connect(
+		m_chatWidget, &ChatWidget::requestChatPositionTop, this,
+		&ChatBox::setChatPositionTop);
+	connect(
+		m_chatWidget, &ChatWidget::requestChatPositionBottom, this,
+		&ChatBox::setChatPositionBottom);
 
 	connect(doc, &Document::canvasChanged, this, &ChatBox::onCanvasChanged);
 	connect(doc, &Document::serverLoggedIn, this, &ChatBox::onServerLogin);
@@ -196,6 +202,16 @@ void ChatBox::receiveSystemMessage(const QString &message, int type)
 void ChatBox::setCurrentLayer(int layerId)
 {
 	m_chatWidget->setCurrentLayer(layerId);
+}
+
+void ChatBox::setChatPositionTop()
+{
+	emit requestChatPositionTop();
+}
+
+void ChatBox::setChatPositionBottom()
+{
+	emit requestChatPositionBottom();
 }
 
 void ChatBox::detachFromParent(int mode)

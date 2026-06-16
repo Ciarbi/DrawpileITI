@@ -13,6 +13,7 @@ extern "C" {
 #include <QByteArray>
 #include <QDeadlineTimer>
 #include <QElapsedTimer>
+#include <QList>
 #include <QMainWindow>
 #include <QMap>
 #include <QPointer>
@@ -443,6 +444,11 @@ private:
 
 	void readSettings(bool windowpos = true);
 	void restoreSettings(config::Config *cfg);
+	void setChatPositionTop();
+	void setChatPositionBottom();
+	void setChatPosition(bool bottom, bool save);
+	void restoreChatSplitterState(config::Config *cfg);
+	QList<int> defaultChatSplitterSizes() const;
 	void initSmallScreenState();
 	void initDefaultDocks();
 	void setDefaultDockSizes();
@@ -537,6 +543,7 @@ private:
 
 	QSplitter *m_splitter;
 	int m_splitterOriginalHandleWidth;
+	bool m_chatPositionBottom = true;
 
 	docks::ToolSettings *m_dockToolSettings;
 	docks::BrushPalette *m_dockBrushPalette;

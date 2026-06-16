@@ -50,6 +50,8 @@ public slots:
 private slots:
 	void onCanvasChanged(canvas::CanvasModel *canvas);
 	void onServerLogin();
+	void setChatPositionTop();
+	void setChatPositionBottom();
 	void detachFromParent(int mode);
 	void reattachToParent();
 
@@ -66,6 +68,9 @@ signals:
 
 	//! Request that the chatbox be expanded
 	void expandPlease();
+
+	void requestChatPositionTop();
+	void requestChatPositionBottom();
 
 	//! Detached chat box should be re-attached and reparented (or it will be
 	//! destroyed)

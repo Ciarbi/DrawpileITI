@@ -247,6 +247,8 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	DrawpileApp *app = &dpApp();
 	config::Config *cfg = app->config();
 	m_doc = new Document(app->canvasImplementation(), app->config(), this);
+	m_chatPositionBottom = QSettings().value(
+		QStringLiteral("settings/chatPositionBottom"), true).toBool();
 
 	// Set up the main window widgets
 	// The central widget consists of a custom status bar and a splitter
@@ -310,15 +312,14 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	m_splitter->addWidget(m_chatbox);
 
 	connect(
+		m_chatbox, &widgets::ChatBox::requestChatPositionTop, this,
+		&MainWindow::setChatPositionTop);
+	connect(
+		m_chatbox, &widgets::ChatBox::requestChatPositionBottom, this,
+		&MainWindow::setChatPositionBottom);
+	connect(
 		m_chatbox, &widgets::ChatBox::reattachNowPlease, this, [this, cfg]() {
-			m_splitter->addWidget(m_chatbox);
-			QByteArray state = cfg->getLastWindowViewState();
-			bool haveSplitterState =
-				!state.isEmpty() && m_splitter->restoreState(state);
-			if(!haveSplitterState || m_chatbox->isCollapsed()) {
-				int h = height();
-				m_splitter->setSizes({h * 2 / 3, h / 3});
-			}
+			restoreChatSplitterState(cfg);
 		});
 
 	// Nice initial division between canvas and chat
@@ -1571,6 +1572,8 @@ void MainWindow::restoreSettings(config::Config *cfg)
 		m_splitter->setHandleWidth(m_splitterOriginalHandleWidth);
 	}
 
+	setChatPosition(m_chatPositionBottom, false);
+
 	const QVariantMap docksConfig = cfg->getLastWindowDocks();
 	for(QDockWidget *dw :
 		findChildren<QDockWidget *>(QString(), Qt::FindDirectChildrenOnly)) {
@@ -1583,6 +1586,89 @@ void MainWindow::restoreSettings(config::Config *cfg)
 			}
 		}
 	}
+}
+
+void MainWindow::setChatPositionTop()
+{
+	setChatPosition(false, true);
+}
+
+void MainWindow::setChatPositionBottom()
+{
+	setChatPosition(true, true);
+}
+
+void MainWindow::setChatPosition(bool bottom, bool save)
+{
+	if(m_smallScreenMode || !m_splitter || !m_canvasFrame || !m_chatbox) {
+		m_chatPositionBottom = bottom;
+		if(save) {
+			QSettings().setValue(
+				QStringLiteral("settings/chatPositionBottom"), bottom);
+		}
+		return;
+	}
+
+	m_chatPositionBottom = bottom;
+	if(save) {
+		QSettings().setValue(
+			QStringLiteral("settings/chatPositionBottom"), bottom);
+	}
+
+	const int chatIndex = m_splitter->indexOf(m_chatbox);
+	if(chatIndex < 0) {
+		return;
+	}
+
+	const int targetIndex = bottom ? 1 : 0;
+	if(chatIndex == targetIndex) {
+		return;
+	}
+
+	const QList<int> sizes = m_splitter->sizes();
+	const int chatSize = sizes.value(chatIndex, height() / 3);
+	const int canvasIndex = m_splitter->indexOf(m_canvasFrame);
+	const int canvasSize = sizes.value(canvasIndex, height() * 2 / 3);
+
+	if(bottom) {
+		m_splitter->addWidget(m_canvasFrame);
+		m_splitter->addWidget(m_chatbox);
+		m_splitter->setSizes({canvasSize, chatSize});
+	} else {
+		m_splitter->addWidget(m_chatbox);
+		m_splitter->addWidget(m_canvasFrame);
+		m_splitter->setSizes({chatSize, canvasSize});
+	}
+	m_saveSplitterDebounce.start();
+}
+
+void MainWindow::restoreChatSplitterState(config::Config *cfg)
+{
+	if(m_splitter && m_chatbox && m_canvasFrame &&
+	   m_splitter->indexOf(m_chatbox) < 0) {
+		if(m_chatPositionBottom) {
+			m_splitter->addWidget(m_chatbox);
+		} else {
+			m_splitter->addWidget(m_chatbox);
+			m_splitter->addWidget(m_canvasFrame);
+		}
+	}
+	setChatPosition(m_chatPositionBottom, false);
+	const QByteArray state = cfg->getLastWindowViewState();
+	const bool haveSplitterState =
+		!state.isEmpty() && m_splitter->restoreState(state);
+	if(!haveSplitterState || m_chatbox->isCollapsed()) {
+		m_splitter->setSizes(defaultChatSplitterSizes());
+	}
+}
+
+QList<int> MainWindow::defaultChatSplitterSizes() const
+{
+	const int h = height();
+	if(m_chatPositionBottom) {
+		return {h * 2 / 3, h / 3};
+	}
+	return {h / 3, h * 2 / 3};
 }
 
 void MainWindow::initSmallScreenState()
@@ -7063,16 +7149,7 @@ void MainWindow::setupActions()
 			handleToggleAction(action);
 		} else {
 			if(show) {
-				QByteArray state = cfg->getLastWindowViewState();
-				if(!state.isEmpty()) {
-					m_splitter->restoreState(state);
-				}
-
-				if(m_chatbox->isCollapsed()) {
-					int h = height();
-					m_splitter->setSizes({h * 2 / 3, h / 3});
-				}
-
+				restoreChatSplitterState(cfg);
 				m_chatbox->focusInput();
 				m_saveSplitterDebounce.start();
 			} else {
