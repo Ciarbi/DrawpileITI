@@ -322,7 +322,13 @@ void FillSettings::pushSettings()
 							 ? m_textureLayerCombo->currentData().toInt()
 							 : 0;
 		if(textureLayerId > 0 && canvas) {
-			textureImg = canvas->paintEngine()->getLayerImage(textureLayerId);
+			drawdance::CanvasState canvasState =
+				canvas->paintEngine()->viewCanvasState();
+			QRect layerBounds = canvasState.layerBounds(textureLayerId);
+			if(!layerBounds.isEmpty()) {
+				textureImg = canvas->paintEngine()->getLayerImage(
+					textureLayerId, layerBounds);
+			}
 		}
 	} else if(textureSource == FloodFill::FillTextureSource::Image) {
 		textureImg = m_textureImage;

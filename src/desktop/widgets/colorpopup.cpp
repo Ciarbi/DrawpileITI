@@ -7,7 +7,7 @@
 namespace widgets {
 
 constexpr Qt::WindowFlags WINDOW_FLAGS =
-#if defined(Q_OS_MACOS) || defined(Q_OS_ANDROID)
+#if defined(Q_OS_MACOS) || defined(Q_OS_ANDROID) || defined(Q_OS_LINUX)
 	Qt::Popup |
 #else
 	Qt::Window |
