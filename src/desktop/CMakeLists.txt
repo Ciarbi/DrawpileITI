@@ -60,6 +60,8 @@ target_sources(drawpile PRIVATE
 	chat/chatwidgetpinnedarea.h
 	chat/chatwindow.cpp
 	chat/chatwindow.h
+	chat/chattitlebar.cpp
+	chat/chattitlebar.h
 	chat/useritemdelegate.cpp
 	chat/useritemdelegate.h
 	config/settingsconfig.cpp

@@ -62,6 +62,15 @@ ChatBox::ChatBox(Document *doc, bool smallScreenMode, QWidget *parent)
 	m_chatMenuButton->setMenu(m_chatWidget->externalMenu());
 	buttonsLayout->addWidget(m_chatMenuButton);
 
+	m_pinButton = new GroupedToolButton{GroupedToolButton::NotGrouped, this};
+	m_pinButton->setIcon(QIcon::fromTheme("pin"));
+	m_pinButton->setToolTip(tr("Pin window on top"));
+	m_pinButton->setCheckable(true);
+	m_pinButton->setChecked(false);
+	m_pinButton->setVisible(false);
+	connect(m_pinButton, &QToolButton::clicked, this, &ChatBox::toggleDetachPin);
+	buttonsLayout->addWidget(m_pinButton);
+
 	buttonsLayout->addStretch();
 
 	m_userList = new QListView(this);
@@ -92,6 +101,9 @@ ChatBox::ChatBox(Document *doc, bool smallScreenMode, QWidget *parent)
 	connect(
 		m_chatWidget, &ChatWidget::detachAlwaysOnTopRequested, this,
 		std::bind(&ChatBox::detachFromParent, this, DETACH_ALWAYS_ON_TOP));
+	connect(
+		m_chatWidget, &ChatWidget::detachOverlayRequested, this,
+		std::bind(&ChatBox::detachFromParent, this, DETACH_OVERLAY));
 	connect(m_chatWidget, &ChatWidget::expandRequested, this, [this]() {
 		if(isCollapsed()) {
 			emit expandPlease();
@@ -222,23 +234,37 @@ void ChatBox::detachFromParent(int mode)
 	}
 
 	m_state = State::Detached;
+	m_overlayMode = (mode == DETACH_OVERLAY);
 
 	QSize siz = size();
 
 	m_chatWidget->setAttached(false);
 
-	Qt::WindowFlags windowFlags = Qt::Window;
-	if(mode == DETACH_ALWAYS_ON_TOP) {
+	Qt::WindowFlags windowFlags = Qt::Window | Qt::FramelessWindowHint;
+	QWidget *windowParent = nullptr;
+	QString pinTip = tr("Pin window on top");
+
+	if(mode == DETACH_ON_TOP) {
+		windowParent = oldParent;
+	} else if(mode == DETACH_ALWAYS_ON_TOP) {
 		windowFlags.setFlag(Qt::WindowStaysOnTopHint);
+		m_pinButton->setChecked(true);
+		pinTip = tr("Unpin window");
+	} else if(mode == DETACH_OVERLAY) {
+		windowFlags.setFlag(Qt::WindowStaysOnTopHint);
+		pinTip = tr("Disable overlay mode");
 	}
 
-	QWidget *windowParent = mode == DETACH_ON_TOP ? oldParent : nullptr;
-	ChatWindow *window = new ChatWindow(this, windowFlags, windowParent);
+	ChatWindow *window = new ChatWindow(this, windowFlags, windowParent, 
+		m_overlayMode ? 0.5 : 0.92);
 	connect(window, &ChatWindow::closing, this, &ChatBox::reattachToParent);
 	connect(oldParent, &QObject::destroyed, window, &QObject::deleteLater);
 
 	window->show();
 	window->resize(siz);
+	m_pinButton->setVisible(true);
+	m_pinButton->setChecked(mode == DETACH_OVERLAY || mode == DETACH_ALWAYS_ON_TOP);
+	m_pinButton->setToolTip(pinTip);
 }
 
 void ChatBox::reattachToParent()
@@ -246,6 +272,31 @@ void ChatBox::reattachToParent()
 	emit reattachNowPlease();
 	m_state = State::Expanded;
 	m_chatWidget->setAttached(true);
+	m_overlayMode = false;
+	m_pinButton->setChecked(false);
+	m_pinButton->setVisible(false);
+}
+
+void ChatBox::toggleDetachPin(bool checked)
+{
+	QWidget *win = parentWidget();
+	while(win && !qobject_cast<ChatWindow *>(win)) {
+		win = win->parentWidget();
+	}
+	ChatWindow *cw = qobject_cast<ChatWindow *>(win);
+	if(!cw) {
+		return;
+	}
+	if(checked) {
+		cw->setWindowFlag(Qt::WindowStaysOnTopHint);
+		m_pinButton->setToolTip(m_overlayMode ? tr("Disable overlay mode") : tr("Unpin window"));
+	} else {
+		cw->setWindowFlag(Qt::WindowStaysOnTopHint, false);
+		m_pinButton->setToolTip(m_overlayMode ? tr("Disable overlay mode") : tr("Pin window on top"));
+	}
+	cw->show();
+	cw->raise();
+	cw->activateWindow();
 }
 
 void ChatBox::resizeEvent(QResizeEvent *event)

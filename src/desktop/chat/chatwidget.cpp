@@ -107,8 +107,10 @@ struct ChatWidget::Private {
 	QAction *detachRegularAction = nullptr;
 	QAction *detachOnTopAction = nullptr;
 	QAction *detachAlwaysOnTopAction = nullptr;
+	QAction *detachOverlayAction = nullptr;
 	QAction *muteAction = nullptr;
 	QAction *chatPositionMenuAction = nullptr;
+	QAction *opacityMenuAction = nullptr;
 
 	QList<int> announcedUsers;
 	canvas::CanvasModel *canvas = nullptr;
@@ -275,10 +277,12 @@ ChatWidget::ChatWidget(bool smallScreenMode, QWidget *parent)
 		d->detachOnTopAction = detachMenu->addAction(
 			//: A chat detach option, "detach > on top of Drawpile".
 			tr("On top of Drawpile"), this, &ChatWidget::detachOnTopRequested);
-		d->detachOnTopAction = detachMenu->addAction(
+		d->detachAlwaysOnTopAction = detachMenu->addAction(
 			//: A chat detach option, "detach > on top of everything".
 			tr("On top of everything"), this,
 			&ChatWidget::detachAlwaysOnTopRequested);
+		d->detachOverlayAction = detachMenu->addAction(
+			tr("As overlay"), this, &ChatWidget::detachOverlayRequested);
 	}
 
 	d->muteAction = d->externalMenu->addAction(

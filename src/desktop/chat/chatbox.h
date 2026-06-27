@@ -5,7 +5,6 @@
 
 class Document;
 class QListView;
-class QPushButton;
 
 namespace canvas {
 class CanvasModel;
@@ -54,6 +53,7 @@ private slots:
 	void setChatPositionBottom();
 	void detachFromParent(int mode);
 	void reattachToParent();
+	void toggleDetachPin(bool checked);
 
 signals:
 	//! User has written a new message
@@ -76,15 +76,16 @@ signals:
 	//! destroyed)
 	void reattachNowPlease();
 
-	void muteChanged(bool muted);
+void muteChanged(bool muted);
 
-protected:
+	protected:
 	void resizeEvent(QResizeEvent *event) override;
 
 private:
 	static constexpr int DETACH_REGULAR = 0;
 	static constexpr int DETACH_ON_TOP = 1;
 	static constexpr int DETACH_ALWAYS_ON_TOP = 2;
+	static constexpr int DETACH_OVERLAY = 3;
 
 	enum class State { Expanded, Collapsed, Detached };
 
@@ -93,9 +94,11 @@ private:
 	GroupedToolButton *m_inviteButton;
 	GroupedToolButton *m_sessionSettingsButton;
 	GroupedToolButton *m_chatMenuButton;
+	GroupedToolButton *m_pinButton;
 	QListView *m_userList;
 
 	State m_state = State::Expanded;
+	bool m_overlayMode = false;
 };
 
 }

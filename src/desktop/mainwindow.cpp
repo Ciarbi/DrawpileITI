@@ -304,11 +304,13 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	m_canvasView->setShowToggleItems(m_smallScreenMode, m_leftyMode);
 
 	m_canvasFrame = new widgets::CanvasFrame(m_canvasView->viewWidget());
+	m_canvasFrame->setObjectName(QStringLiteral("canvasFrame"));
 	m_splitter->addWidget(m_canvasFrame);
 	m_splitter->setCollapsible(SPLITTER_WIDGET_IDX++, false);
 
 	// Create the chatbox
 	m_chatbox = new widgets::ChatBox(m_doc, m_smallScreenMode, this);
+	m_chatbox->setObjectName(QStringLiteral("chatbox"));
 	m_splitter->addWidget(m_chatbox);
 
 	connect(
@@ -1631,12 +1633,10 @@ void MainWindow::setChatPosition(bool bottom, bool save)
 	const int canvasSize = sizes.value(canvasIndex, height() * 2 / 3);
 
 	if(bottom) {
-		m_splitter->addWidget(m_canvasFrame);
-		m_splitter->addWidget(m_chatbox);
+		m_splitter->insertWidget(1, m_chatbox);
 		m_splitter->setSizes({canvasSize, chatSize});
 	} else {
-		m_splitter->addWidget(m_chatbox);
-		m_splitter->addWidget(m_canvasFrame);
+		m_splitter->insertWidget(0, m_chatbox);
 		m_splitter->setSizes({chatSize, canvasSize});
 	}
 	m_saveSplitterDebounce.start();
@@ -1649,16 +1649,30 @@ void MainWindow::restoreChatSplitterState(config::Config *cfg)
 		if(m_chatPositionBottom) {
 			m_splitter->addWidget(m_chatbox);
 		} else {
-			m_splitter->addWidget(m_chatbox);
-			m_splitter->addWidget(m_canvasFrame);
+			m_splitter->insertWidget(0, m_chatbox);
 		}
 	}
-	setChatPosition(m_chatPositionBottom, false);
 	const QByteArray state = cfg->getLastWindowViewState();
 	const bool haveSplitterState =
 		!state.isEmpty() && m_splitter->restoreState(state);
+	setChatPosition(m_chatPositionBottom, false);
 	if(!haveSplitterState || m_chatbox->isCollapsed()) {
 		m_splitter->setSizes(defaultChatSplitterSizes());
+	}
+	if(m_splitter->count() != 2) {
+		m_chatbox->hide();
+		m_canvasFrame->hide();
+		for(int i = m_splitter->count() - 1; i >= 0; --i) {
+			m_splitter->widget(i)->setParent(nullptr);
+		}
+		m_splitter->addWidget(m_canvasFrame);
+		if(m_chatPositionBottom) {
+			m_splitter->addWidget(m_chatbox);
+		} else {
+			m_splitter->insertWidget(0, m_chatbox);
+		}
+		m_chatbox->show();
+		m_canvasFrame->show();
 	}
 }
 

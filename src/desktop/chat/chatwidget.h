@@ -92,6 +92,7 @@ signals:
 	void detachRegularRequested();
 	void detachOnTopRequested();
 	void detachAlwaysOnTopRequested();
+	void detachOverlayRequested();
 	void expandRequested();
 	void muteChanged(bool muted);
 	void requestChatPositionTop();
