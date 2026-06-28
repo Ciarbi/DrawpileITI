@@ -380,6 +380,7 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	m_canvasView->connectCanvasFrame(m_canvasFrame);
 	m_canvasView->connectDocument(m_doc);
 	m_canvasView->connectMainWindow(this);
+	m_canvasView->connectLayers(m_dockLayers);
 	m_canvasView->connectNavigator(m_dockNavigator);
 	m_canvasView->connectLock(m_viewLock);
 	m_canvasView->connectViewStatus(m_viewstatus);
@@ -7827,6 +7828,11 @@ void MainWindow::setupActions()
 		makeAction("key-frame-paste", tr("Paste Key Frame(s)", nullptr, 1))
 			.icon("edit-paste")
 			.noDefaultShortcut();
+	QAction *keyFramePasteDeclone =
+		makeAction(
+			"key-frame-paste-declone", tr("Paste Decloned Key Frame Layers"))
+			.icon("special_paste")
+			.noDefaultShortcut();
 	QVector<QAction *> keyFrameColors;
 	for(const utils::MarkerColor &mc : utils::markerColors()) {
 		keyFrameColors.append(
@@ -7941,6 +7947,7 @@ void MainWindow::setupActions()
 	animationMenu->addAction(keyFrameCut);
 	animationMenu->addAction(keyFrameCopy);
 	animationMenu->addAction(keyFramePaste);
+	animationMenu->addAction(keyFramePasteDeclone);
 	QMenu *animationKeyFrameColorMenu = animationMenu->addMenu(
 		utils::makeColorIcon(16, QColor()), tr("Key Frame Color Marker"));
 	for(QAction *keyFrameColor : keyFrameColors) {
@@ -8052,6 +8059,7 @@ void MainWindow::setupActions()
 			keyFrameCut,
 			keyFrameCopy,
 			keyFramePaste,
+			keyFramePasteDeclone,
 			keyFrameProperties,
 			keyFrameDeleteLayer,
 			keyFrameUnassign,
@@ -8172,7 +8180,7 @@ void MainWindow::setupActions()
 	QAction *ellipsetool = makeAction("toolellipse", tr("&Ellipse")).icon("draw-ellipse").statusTip(tr("Draw unfilled circles and ellipses")).shortcut("O").checkable();
 	QAction *beziertool = makeAction("toolbezier", tr("Bezier Curve")).icon("draw-bezier-curves").statusTip(tr("Draw bezier curves")).shortcut("Ctrl+B").checkable();
 	QAction *filltool = makeAction("toolfill", tr("&Flood Fill")).icon("fill-color").statusTip(tr("Fill areas")).shortcut("F").checkable();
-	QAction *lassofilltool = makeAction("toollassofill", tr("Lass&o Fill")).icon("drawpile_lassofill").statusTip(tr("Fill enclosed areas")).shortcut("Shift+F").checkable();
+	QAction *lassofilltool = makeAction("toollassofill", tr("S&hape Fill")).icon("drawpile_lassofill").statusTip(tr("Fill enclosed areas")).shortcut("Shift+F").checkable();
 	QAction *gradienttool = makeAction("toolgradient", tr("&Gradient")).icon("drawpile_gradient").statusTip(tr("Create a gradient inside selected areas")).shortcut("G").checkable();
 	QAction *annotationtool = makeAction("tooltext", tr("&Annotation")).icon("draw-text").statusTip(tr("Add text to the picture")).shortcut("A").checked();
 
