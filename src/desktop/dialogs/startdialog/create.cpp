@@ -61,7 +61,7 @@ Create::Create(QWidget *parent)
 	}
 	QHBoxLayout *swapButtonLayout = new QHBoxLayout;
 	m_swapButton = new QToolButton;
-	m_swapButton->setIcon(QIcon::fromTheme(QStringLiteral("page-orientation-icon-85194-512")));
+	m_swapButton->setIcon(QIcon::fromTheme(QStringLiteral("page-orientation")));
 	m_swapButton->setToolTip(tr("Swap Orientation"));
 	swapButtonLayout->addWidget(m_swapButton);
 
