@@ -8179,6 +8179,8 @@ void MainWindow::setupActions()
 	QAction *recttool = makeAction("toolrect", tr("&Rectangle")).icon("draw-rectangle").statusTip(tr("Draw unfilled squares and rectangles")).shortcut("R").checkable();
 	QAction *ellipsetool = makeAction("toolellipse", tr("&Ellipse")).icon("draw-ellipse").statusTip(tr("Draw unfilled circles and ellipses")).shortcut("O").checkable();
 	QAction *beziertool = makeAction("toolbezier", tr("Bezier Curve")).icon("draw-bezier-curves").statusTip(tr("Draw bezier curves")).shortcut("Ctrl+B").checkable();
+	QAction *triangletool = makeAction("tooltriangle", tr("&Triangle")).icon("draw-triangle").statusTip(tr("Draw triangles")).shortcut("Ctrl+T").checkable();
+	QAction *diamondtool = makeAction("tooldiamond", tr("&Diamond")).icon("draw-diamond").statusTip(tr("Draw diamond shapes")).shortcut("Ctrl+D").checkable();
 	QAction *filltool = makeAction("toolfill", tr("&Flood Fill")).icon("fill-color").statusTip(tr("Fill areas")).shortcut("F").checkable();
 	QAction *lassofilltool = makeAction("toollassofill", tr("S&hape Fill")).icon("drawpile_lassofill").statusTip(tr("Fill enclosed areas")).shortcut("Shift+F").checkable();
 	QAction *gradienttool = makeAction("toolgradient", tr("&Gradient")).icon("drawpile_gradient").statusTip(tr("Create a gradient inside selected areas")).shortcut("G").checkable();
@@ -8202,6 +8204,8 @@ void MainWindow::setupActions()
 	m_drawingtools->addAction(recttool);
 	m_drawingtools->addAction(ellipsetool);
 	m_drawingtools->addAction(beziertool);
+	m_drawingtools->addAction(triangletool);
+	m_drawingtools->addAction(diamondtool);
 	m_drawingtools->addAction(filltool);
 	m_drawingtools->addAction(lassofilltool);
 	m_drawingtools->addAction(gradienttool);
@@ -8239,7 +8243,29 @@ void MainWindow::setupActions()
 	}
 
 	QMenu *toolsmenu = menuBar()->addMenu(tr("Tools"));
-	toolsmenu->addActions(m_drawingtools->actions());
+	QMenu *shapesmenu = toolsmenu->addMenu(tr("&Shapes"));
+	shapesmenu->addAction(linetool);
+	shapesmenu->addAction(recttool);
+	shapesmenu->addAction(ellipsetool);
+	shapesmenu->addAction(beziertool);
+	shapesmenu->addAction(triangletool);
+	shapesmenu->addAction(diamondtool);
+	toolsmenu->addAction(m_freehandAction);
+	toolsmenu->addAction(erasertool);
+	toolsmenu->addAction(filltool);
+	toolsmenu->addAction(lassofilltool);
+	toolsmenu->addAction(gradienttool);
+	toolsmenu->addAction(annotationtool);
+	toolsmenu->addAction(pickertool);
+	toolsmenu->addAction(lasertool);
+	toolsmenu->addAction(selectiontool);
+	toolsmenu->addAction(lassotool);
+	toolsmenu->addAction(magicwandtool);
+	toolsmenu->addAction(transformtool);
+	toolsmenu->addAction(pantool);
+	toolsmenu->addAction(zoomtool);
+	toolsmenu->addAction(rotationtool);
+	toolsmenu->addAction(inspectortool);
 	toolsmenu->addAction(toolbarconfig);
 	toolsmenu->addSeparator();
 

@@ -93,6 +93,32 @@ protected:
 	canvas::PointVector pointVector() const override;
 };
 
+/**
+ * \brief Triangle drawing tool
+ *
+ * This tool is used for drawing triangles
+ */
+class Triangle final : public ShapeTool {
+public:
+	Triangle(ToolController &owner, DP_MaskSync *ms);
+
+protected:
+	canvas::PointVector pointVector() const override;
+};
+
+/**
+ * \brief Diamond drawing tool
+ *
+ * This tool is used for drawing diamonds (rhombuses)
+ */
+class Diamond final : public ShapeTool {
+public:
+	Diamond(ToolController &owner, DP_MaskSync *ms);
+
+protected:
+	canvas::PointVector pointVector() const override;
+};
+
 }
 
 #endif

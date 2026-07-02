@@ -96,6 +96,14 @@ endif()
 option(DIST_BUILD "Build for stand-alone distribution")
 add_feature_info("Distribution build (DIST_BUILD)" DIST_BUILD "")
 
+if(UNIX AND NOT APPLE AND NOT ANDROID)
+	option(APPIMAGE "Build a Linux AppImage" OFF)
+	add_feature_info("Linux AppImage (APPIMAGE)" APPIMAGE "")
+	if(APPIMAGE)
+		set(DIST_BUILD ON CACHE BOOL "" FORCE)
+	endif()
+endif()
+
 option(DISABLE_UPDATE_CHECK_DEFAULT "Don't enable update checks by default" OFF)
 add_feature_info("Update checking disabled by default (DISABLE_UPDATE_CHECK_DEFAULT)" DISABLE_UPDATE_CHECK_DEFAULT "")
 

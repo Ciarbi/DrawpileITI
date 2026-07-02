@@ -328,7 +328,7 @@ disable_automoc_warnings()
 
 # Since Android is cross-compiled it is already always creating a distributable
 # build
-if(DIST_BUILD AND NOT ANDROID)
+if(DIST_BUILD OR APPIMAGE)
 	include(DrawpileDistBuild)
 endif()
 

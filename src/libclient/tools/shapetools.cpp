@@ -222,4 +222,44 @@ canvas::PointVector Ellipse::pointVector() const
 	return gen.pv();
 }
 
+Triangle::Triangle(ToolController &owner, DP_MaskSync *ms)
+	: ShapeTool(owner, TRIANGLE, utils::Cursors::dot(), ms)
+{
+}
+
+canvas::PointVector Triangle::pointVector() const
+{
+	QRectF r = rect();
+	QPointF top(r.center().x(), r.top());
+	QPointF bottomLeft(r.left(), r.bottom());
+	QPointF bottomRight(r.right(), r.bottom());
+	PointVectorGenerator gen;
+	gen.append(top);
+	gen.append(bottomRight);
+	gen.append(bottomLeft);
+	gen.append(top);
+	return gen.pv();
+}
+
+Diamond::Diamond(ToolController &owner, DP_MaskSync *ms)
+	: ShapeTool(owner, DIAMOND, utils::Cursors::dot(), ms)
+{
+}
+
+canvas::PointVector Diamond::pointVector() const
+{
+	QRectF r = rect();
+	QPointF top(r.center().x(), r.top());
+	QPointF right(r.right(), r.center().y());
+	QPointF bottom(r.center().x(), r.bottom());
+	QPointF left(r.left(), r.center().y());
+	PointVectorGenerator gen;
+	gen.append(top);
+	gen.append(right);
+	gen.append(bottom);
+	gen.append(left);
+	gen.append(top);
+	return gen.pv();
+}
+
 }

@@ -9,7 +9,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
 if(EMSCRIPTEN)
 	set(CMAKE_INSTALL_BINDIR "drawpile-web")
-elseif(DIST_BUILD AND UNIX AND NOT APPLE AND NOT ANDROID)
+elseif((DIST_BUILD OR APPIMAGE) AND UNIX AND NOT APPLE AND NOT ANDROID)
 	# linuxdeploy wants everything in a usr subdirectory, so force
 	# GNUInstallDirs to generate those paths by temporarily lying about what
 	# CMAKE_INSTALL_PREFIX is set to

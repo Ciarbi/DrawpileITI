@@ -84,6 +84,8 @@ ToolController::ToolController(net::Client *client, QObject *parent)
 	registerTool(new Rectangle(*this, ms));
 	registerTool(new Ellipse(*this, ms));
 	registerTool(new BezierTool(*this, ms));
+	registerTool(new Triangle(*this, ms));
+	registerTool(new Diamond(*this, ms));
 	registerTool(new FloodFill(*this));
 	registerTool(new LassoFillTool(*this));
 	registerTool(new GradientTool(*this));

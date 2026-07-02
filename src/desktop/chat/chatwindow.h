@@ -4,6 +4,7 @@
 #define CHATWINDOW_H
 
 #include "desktop/chat/chattitlebar.h"
+#include "desktop/utils/qtguicompat.h"
 #include <QPoint>
 #include <QWidget>
 
@@ -36,7 +37,7 @@ protected:
 	void mouseReleaseEvent(QMouseEvent *event) override;
 	void wheelEvent(QWheelEvent *event) override;
 	void paintEvent(QPaintEvent *event) override;
-	void enterEvent(QEvent *event) override;
+	void enterEvent(compat::EnterEvent *event) override;
 
 private:
 	enum ResizeBorder {

@@ -95,6 +95,12 @@ struct ToolSettings::Private {
 		pages[tools::Tool::BEZIER] = {
 			brush, "bezier", QIcon::fromTheme("draw-bezier-curves"),
 			QApplication::tr("Bezier Curve")};
+		pages[tools::Tool::TRIANGLE] = {
+			brush, "triangle", QIcon::fromTheme("draw-triangle"),
+			QApplication::tr("Triangle")};
+		pages[tools::Tool::DIAMOND] = {
+			brush, "diamond", QIcon::fromTheme("draw-diamond"),
+			QApplication::tr("Diamond")};
 		pages[tools::Tool::FLOODFILL] = {
 			QSharedPointer<tools::ToolSettings>(new tools::FillSettings(ctrl)),
 			"fill", QIcon::fromTheme("fill-color"),
@@ -856,6 +862,8 @@ bool ToolSettings::hasBrushCursor(tools::Tool::Type tool)
 	case tools::Tool::RECTANGLE:
 	case tools::Tool::ELLIPSE:
 	case tools::Tool::BEZIER:
+	case tools::Tool::TRIANGLE:
+	case tools::Tool::DIAMOND:
 		return true;
 	default:
 		return false;

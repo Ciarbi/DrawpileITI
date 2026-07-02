@@ -2,8 +2,9 @@
 
 #include "desktop/chat/chatwindow.h"
 
+#include "desktop/utils/qtguicompat.h"
+
 #include <QApplication>
-#include <QDesktopWidget>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QResizeEvent>
@@ -198,7 +199,7 @@ void ChatWindow::mouseReleaseEvent(QMouseEvent *event)
 	QWidget::mouseReleaseEvent(event);
 }
 
-void ChatWindow::enterEvent(QEvent *event)
+void ChatWindow::enterEvent(compat::EnterEvent *event)
 {
 	updateCursor(mapFromGlobal(QCursor::pos()));
 	QWidget::enterEvent(event);
