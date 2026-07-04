@@ -69,6 +69,7 @@ extern "C" {
 #include "desktop/view/lock.h"
 #include "desktop/widgets/canvasframe.h"
 #include "desktop/widgets/dualcolorbutton.h"
+#include "desktop/widgets/groupedtoolbutton.h"
 #include "desktop/widgets/netstatus.h"
 #include "desktop/widgets/nonaltstealingmenubar.h"
 #include "desktop/widgets/projectrecordingstatusbutton.h"
@@ -2356,6 +2357,8 @@ void MainWindow::setToolBarConfig(const QVariantHash &cfg)
 {
 	delete m_freehandButton;
 	m_freehandButton = nullptr;
+	delete m_shapesButton;
+	m_shapesButton = nullptr;
 
 	m_toolBarDraw->clear();
 
@@ -2380,6 +2383,36 @@ void MainWindow::setToolBarConfig(const QVariantHash &cfg)
 						&tools::BrushSettings::brushModeChanged, this,
 						&MainWindow::updateFreehandToolButton);
 					m_toolBarDraw->addWidget(m_freehandButton);
+			} else if(action->objectName() == "toolrect" ||
+				action->objectName() == "toolellipse" ||
+				action->objectName() == "tooltriangle" ||
+				action->objectName() == "tooldiamond") {
+				if(!m_shapesButton) {
+					m_shapesButton = new widgets::GroupedToolButton(this);
+					m_shapesButton->setPopupMode(QToolButton::InstantPopup);
+					QMenu *shapesMenu = new QMenu(m_shapesButton);
+					auto addShapeAction = [shapesMenu](QAction *a) {
+						QAction *menuAction = shapesMenu->addAction(a->icon(), a->text());
+						menuAction->setStatusTip(a->statusTip());
+						connect(menuAction, &QAction::triggered, a, &QAction::trigger);
+						return menuAction;
+					};
+					QAction *rectangleAction = m_drawingtools->actions().at(int(tools::Tool::RECTANGLE));
+					QAction *ellipseAction = m_drawingtools->actions().at(int(tools::Tool::ELLIPSE));
+					QAction *triangleAction = m_drawingtools->actions().at(int(tools::Tool::TRIANGLE));
+					QAction *diamondAction = m_drawingtools->actions().at(int(tools::Tool::DIAMOND));
+					addShapeAction(rectangleAction);
+					addShapeAction(ellipseAction);
+					addShapeAction(triangleAction);
+					addShapeAction(diamondAction);
+						m_shapesButton->setMenu(shapesMenu);
+						m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("shapes")));
+						m_shapesButton->setToolTip(tr("Shapes"));
+						m_shapesButton->setStatusTip(tr("Shape tools"));
+						connect(m_shapesButton, &QToolButton::clicked, this, &MainWindow::handleShapesToolButtonClicked);
+						updateShapesToolButton(m_dockToolSettings->currentTool());
+						m_toolBarDraw->addWidget(m_shapesButton);
+					}
 				} else {
 					m_toolBarDraw->addAction(action);
 				}
@@ -5327,6 +5360,45 @@ void MainWindow::toolChanged(tools::Tool::Type tool)
 
 	m_doc->toolCtrl()->setActiveTool(tool);
 	triggerUpdateLockState();
+	updateShapesToolButton(tool);
+}
+
+void MainWindow::updateShapesToolButton(tools::Tool::Type tool)
+{
+	if(m_shapesButton) {
+		switch(tool) {
+		case tools::Tool::RECTANGLE:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("draw-rectangle")));
+			break;
+		case tools::Tool::ELLIPSE:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("draw-ellipse")));
+			break;
+		case tools::Tool::TRIANGLE:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("triangle")));
+			break;
+		case tools::Tool::DIAMOND:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("diamond")));
+			break;
+		default:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("shapes")));
+			break;
+		}
+	}
+}
+
+void MainWindow::handleShapesToolButtonClicked()
+{
+	if(m_shapesButton) {
+		QSignalBlocker blocker(m_shapesButton);
+		auto tool = m_dockToolSettings->currentTool();
+		if(tool == tools::Tool::RECTANGLE ||
+		   tool == tools::Tool::ELLIPSE ||
+		   tool == tools::Tool::TRIANGLE ||
+		   tool == tools::Tool::DIAMOND) {
+			return;
+		}
+	}
+	m_drawingtools->actions().at(int(tools::Tool::ELLIPSE))->trigger();
 }
 
 // clang-format on
@@ -8179,8 +8251,8 @@ void MainWindow::setupActions()
 	QAction *recttool = makeAction("toolrect", tr("&Rectangle")).icon("draw-rectangle").statusTip(tr("Draw unfilled squares and rectangles")).shortcut("R").checkable();
 	QAction *ellipsetool = makeAction("toolellipse", tr("&Ellipse")).icon("draw-ellipse").statusTip(tr("Draw unfilled circles and ellipses")).shortcut("O").checkable();
 	QAction *beziertool = makeAction("toolbezier", tr("Bezier Curve")).icon("draw-bezier-curves").statusTip(tr("Draw bezier curves")).shortcut("Ctrl+B").checkable();
-	QAction *triangletool = makeAction("tooltriangle", tr("&Triangle")).icon("draw-triangle").statusTip(tr("Draw triangles")).shortcut("Ctrl+T").checkable();
-	QAction *diamondtool = makeAction("tooldiamond", tr("&Diamond")).icon("draw-diamond").statusTip(tr("Draw diamond shapes")).shortcut("Ctrl+D").checkable();
+	QAction *triangletool = makeAction("tooltriangle", tr("&Triangle")).icon("triangle").statusTip(tr("Draw triangles")).shortcut("Ctrl+T").checkable();
+	QAction *diamondtool = makeAction("tooldiamond", tr("&Diamond")).icon("diamond").statusTip(tr("Draw diamond shapes")).shortcut("Ctrl+D").checkable();
 	QAction *filltool = makeAction("toolfill", tr("&Flood Fill")).icon("fill-color").statusTip(tr("Fill areas")).shortcut("F").checkable();
 	QAction *lassofilltool = makeAction("toollassofill", tr("S&hape Fill")).icon("drawpile_lassofill").statusTip(tr("Fill enclosed areas")).shortcut("Shift+F").checkable();
 	QAction *gradienttool = makeAction("toolgradient", tr("&Gradient")).icon("drawpile_gradient").statusTip(tr("Create a gradient inside selected areas")).shortcut("G").checkable();

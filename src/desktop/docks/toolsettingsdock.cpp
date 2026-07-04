@@ -96,10 +96,10 @@ struct ToolSettings::Private {
 			brush, "bezier", QIcon::fromTheme("draw-bezier-curves"),
 			QApplication::tr("Bezier Curve")};
 		pages[tools::Tool::TRIANGLE] = {
-			brush, "triangle", QIcon::fromTheme("draw-triangle"),
+			brush, "triangle", QIcon::fromTheme("triangle"),
 			QApplication::tr("Triangle")};
 		pages[tools::Tool::DIAMOND] = {
-			brush, "diamond", QIcon::fromTheme("draw-diamond"),
+			brush, "diamond", QIcon::fromTheme("diamond"),
 			QApplication::tr("Diamond")};
 		pages[tools::Tool::FLOODFILL] = {
 			QSharedPointer<tools::ToolSettings>(new tools::FillSettings(ctrl)),

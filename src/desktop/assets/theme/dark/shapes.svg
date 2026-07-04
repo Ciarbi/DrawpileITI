@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 22 22"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="shapes.svg"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="30.136364"
+     inkscape:cx="10.983409"
+     inkscape:cy="11"
+     inkscape:window-width="1600"
+     inkscape:window-height="872"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg1" />
+  <defs
+     id="defs1">
+    <style
+       type="text/css"
+       id="current-color-scheme">.ColorScheme-Text {
+        color:#eff0f1;
+      }</style>
+  </defs>
+  <rect
+     class="ColorScheme-Text"
+     x="1.5"
+     y="1.5"
+     width="8"
+     height="8"
+     rx="1"
+     fill="none"
+     stroke="currentColor"
+     stroke-width="1.5"
+     id="rect1" />
+  <circle
+     class="ColorScheme-Text"
+     cx="16"
+     cy="5.5"
+     r="3.5"
+     fill="none"
+     stroke="currentColor"
+     stroke-width="1.5"
+     id="circle1" />
+  <path
+     class="ColorScheme-Text"
+     d="m 11,12.5 5,5 H 6 Z"
+     fill="none"
+     stroke="currentColor"
+     stroke-width="1.5"
+     stroke-linejoin="round"
+     id="path1" />
+</svg>
