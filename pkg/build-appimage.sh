@@ -4,7 +4,6 @@ set -euo pipefail
 APPIMAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "${APPIMAGE_DIR}")"
 BUILD_DIR="${PROJECT_DIR}/build"
-STAGE_DIR="$(cd "${PROJECT_DIR}" && pwd)/appimage-stage"
 LINUXDEPLOY_DIR="${PROJECT_DIR}/.linuxdeploy-bin"
 CLEAN_CACHE=0
 
@@ -54,12 +53,10 @@ fi
 mkdir -p "${LINUXDEPLOY_DIR}"
 export PATH="${LINUXDEPLOY_DIR}:${PATH}"
 
-rm -rf "${STAGE_DIR}"
 
-echo "Reconfiguring CMake for AppImage packaging..."
 cmake -S "${PROJECT_DIR}" -B "${BUILD_DIR}" \
     -DAPPIMAGE=ON \
-    -DCMAKE_INSTALL_PREFIX="${STAGE_DIR}" \
+    -DCMAKE_INSTALL_PREFIX="${BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE=Release
 
 echo "Populating AppDir and deploying Qt dependencies via linuxdeploy..."
@@ -70,34 +67,32 @@ cmake --install "${BUILD_DIR}" --config Release
 LINUXDEPLOY_EXIT=$?
 set -e
 
-if [[ ! -d "${STAGE_DIR}" ]]; then
-    echo "Error: staging directory was not created." >&2
+if [[ ! -d "${BUILD_DIR}" ]]; then
+    echo "Error: build directory was not created." >&2
     exit 1
 fi
 
 echo "Fixing bundled libraries with .relr.dyn sections..."
-find "${STAGE_DIR}" -type f -name '*.so*' -exec objcopy --remove-section=.relr.dyn {} \; || true
+find "${BUILD_DIR}" -type f -name '*.so*' -exec objcopy --remove-section=.relr.dyn {} \; || true
 
 if [[ ! -f "${BUILD_DIR}/pkg/custom-apprun.sh" ]]; then
     echo "Error: custom AppRun script not found at ${BUILD_DIR}/pkg/custom-apprun.sh" >&2
     exit 1
 fi
-cp "${BUILD_DIR}/pkg/custom-apprun.sh" "${STAGE_DIR}/AppRun"
-chmod +x "${STAGE_DIR}/AppRun"
+cp "${BUILD_DIR}/pkg/custom-apprun.sh" "${BUILD_DIR}/AppRun"
+chmod +x "${BUILD_DIR}/AppRun"
 
-if [[ -f "${STAGE_DIR}/usr/share/applications/net.drawpile.drawpile.desktop" ]]; then
-    cp "${STAGE_DIR}/usr/share/applications/net.drawpile.drawpile.desktop" "${STAGE_DIR}/net.drawpile.drawpile.desktop"
+if [[ -f "${BUILD_DIR}/usr/share/applications/net.drawpile.drawpile.desktop" ]]; then
+    cp "${BUILD_DIR}/usr/share/applications/net.drawpile.drawpile.desktop" "${BUILD_DIR}/net.drawpile.drawpile.desktop"
 fi
 
 if [[ -f "${PROJECT_DIR}/src/desktop/icons/drawpile.png" ]]; then
-    cp "${PROJECT_DIR}/src/desktop/icons/drawpile.png" "${STAGE_DIR}/drawpile.png"
+    cp "${PROJECT_DIR}/src/desktop/icons/drawpile.png" "${BUILD_DIR}/drawpile.png"
 fi
 
 APPIMAGE_NAME="Drawpile-${VERSION}-x86_64.AppImage"
 echo "Creating AppImage: ${APPIMAGE_NAME}"
-appimagetool "${STAGE_DIR}" "${PROJECT_DIR}/${APPIMAGE_NAME}"
-
-rm -rf "${STAGE_DIR}"
+appimagetool "${BUILD_DIR}" "${PROJECT_DIR}/${APPIMAGE_NAME}"
 
 if [[ "${CLEAN_CACHE}" -eq 1 ]]; then
     echo "Cleaning linuxdeploy cache to liberate space..."
