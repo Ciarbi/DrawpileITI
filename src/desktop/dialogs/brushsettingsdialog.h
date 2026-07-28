@@ -10,12 +10,13 @@
 class KisSliderSpinBox;
 class QCheckBox;
 class QComboBox;
+class QFormLayout;
 class QGraphicsView;
 class QKeySequence;
 class QLineEdit;
-class QTreeWidgetItem;
 class QPlainTextEdit;
 class QPushButton;
+class QTreeWidgetItem;
 class QVBoxLayout;
 
 namespace utils {
@@ -27,7 +28,10 @@ namespace dialogs {
 class BrushPresetForm final : public QWidget {
 	Q_OBJECT
 public:
-	explicit BrushPresetForm(QWidget *parent = nullptr);
+	explicit BrushPresetForm(
+		bool shortcut, bool take, QWidget *parent = nullptr);
+
+	QFormLayout *form();
 
 	QString presetName() const;
 	void setPresetName(const QString &presetName);
@@ -89,10 +93,13 @@ signals:
 	void brushSettingsChanged(const brushes::ActiveBrush &brush);
 	void newBrushRequested();
 	void overwriteBrushRequested();
+	void undeleteBrushRequested();
+	void saveTransientBrushRequested();
 	void shortcutChangeRequested(int presetId);
 
 public slots:
 	void setPresetAttached(bool presetAttached, int presetId);
+	void setPresetState(int state);
 	void setPresetName(const QString &presetName);
 	void setPresetDescription(const QString &presetDescription);
 	void setPresetThumbnail(const QPixmap &presetThumbnail);
@@ -157,6 +164,7 @@ private:
 	void addClassicCategories(bool withHardness);
 	void addMyPaintCategories();
 
+	void updatePresetActions();
 	void updateUiFromClassicBrush();
 	bool updateClassicBrushDynamics(
 		Dynamics &dynamics, const DP_ClassicBrushDynamic &brush);

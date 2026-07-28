@@ -8,6 +8,7 @@
 #include <QJsonValue>
 #include <QKeySequence>
 #include <QPixmap>
+#include <QSet>
 #include <functional>
 #include <optional>
 
@@ -31,6 +32,7 @@ struct Tag {
 
 	bool isAssignable() const { return id > 0; }
 	bool isEditable() const { return id > 0; }
+	bool isHistory() const;
 	bool accepts(const QSet<int> &tagIds) const;
 };
 
@@ -42,6 +44,7 @@ struct TagAssignment {
 
 struct Preset {
 	int id = 0;
+	int state = 0;
 	QString originalName;
 	QString originalDescription;
 	LazyThumbnail originalThumbnail;
@@ -154,6 +157,7 @@ public:
 	data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
 	static bool isExportableRow(int row);
+	static bool isHistoryRow(int row);
 
 	Tag getTagAt(int row) const;
 	int getTagRowById(int tagId) const;
@@ -254,6 +258,7 @@ public:
 		EffectiveDescriptionRole,
 		HasChangesRole,
 		PresetRole,
+		StateRole,
 	};
 
 	explicit BrushPresetModel(BrushPresetTagModel *tagModel);
@@ -301,6 +306,7 @@ public:
 	bool updatePresetShortcut(int presetId, QKeySequence shortcut);
 
 	bool deletePreset(int presetId);
+	bool undeletePreset(int presetId);
 
 	void changePreset(
 		int presetId, const std::optional<QString> &name = {},
@@ -310,7 +316,19 @@ public:
 	void resetAllPresetChanges();
 	void writePresetChanges();
 
+	bool saveTransientPreset(
+		int presetId, const QString &name, const QString &description,
+		const QPixmap &thumbnail, const QSet<int> &tagIds);
+
+	void addPresetIdToHistory(int presetId);
+	void removePresetFromHistory(int presetId);
+	void clearHistory();
+	int countHistoryPresetsPendingRemoval();
+	int getPresetState(int presetId);
+
 	int countNames(const QString &name) const;
+
+	int handleReceivedBrush(const QString &username, const ActiveBrush &brush);
 
 	void getShortcutActions(
 		const std::function<void(
@@ -334,16 +352,19 @@ signals:
 	void presetChanged(
 		int presetId, const QString &name, const QString &description,
 		const QPixmap &thumbnail, const ActiveBrush &brush);
+	void transientPresetChanged(
+		int presetId, int state, const QString &name,
+		const QString &description, const QPixmap &thumbnail);
 	void presetShortcutChanged(int presetId, const QKeySequence &shortcut);
+	void presetStateChanged(int presetId, int state);
 	void presetRemoved(int presetId);
+	void presetPrepended(int presetId, bool inserted);
 	void shortcutActionAdded(
 		const QString &name, const QString &text, const QKeySequence &shortcut);
 	void shortcutActionChanged(const QString &name, const QString &text);
 	void shortcutActionRemoved(const QString &name);
 
 private:
-	static QPixmap loadBrushPreview(const QFileInfo &fileInfo);
-
 	BrushPresetTagModel::Private *d;
 };
 

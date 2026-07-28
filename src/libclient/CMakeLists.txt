@@ -17,6 +17,7 @@ target_sources(dpclient PRIVATE
 	brushes/brush.h
 	brushes/brushpresetmodel.cpp
 	brushes/brushpresetmodel.h
+	brushes/enums.h
 	brushes/lazybrush.cpp
 	brushes/lazybrush.h
 	brushes/lazythumbnail.cpp
@@ -126,6 +127,7 @@ target_sources(dpclient PRIVATE
 	export/projectsaver.h
 	export/thumbnailerrunnable.cpp
 	export/thumbnailerrunnable.h
+	export/videoexporthandle.h
 	export/videoformat.cpp
 	export/videoformat.h
 	import/animationimporter.cpp
@@ -223,6 +225,8 @@ target_sources(dpclient PRIVATE
 	utils/clickeventfilter.h
 	utils/colorscheme.cpp
 	utils/colorscheme.h
+	utils/compressedtimer.cpp
+	utils/compressedtimer.h
 	utils/cursors.cpp
 	utils/cursors.h
 	utils/customshortcutmodel.cpp
@@ -250,6 +254,8 @@ target_sources(dpclient PRIVATE
 	utils/listservermodel.h
 	utils/logging.cpp
 	utils/logging.h
+	utils/pathinfo.cpp
+	utils/pathinfo.h
 	utils/qtguicompat.cpp
 	utils/qtguicompat.h
 	utils/scopedoverridecursor.h

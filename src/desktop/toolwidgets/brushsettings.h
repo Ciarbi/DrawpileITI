@@ -76,12 +76,14 @@ public:
 	void setBrushPresetInSlot(const brushes::Preset &p, int i);
 	brushes::ActiveBrush currentBrush() const;
 	int currentPresetId() const;
+	int currentPresetState() const;
 	const QString &currentPresetName() const;
 	const QString &currentPresetDescription() const;
 	const QPixmap &currentPresetThumbnail() const;
 	bool isCurrentPresetAttached() const;
 	bool isCurrentSlotUpdateInProgress() const;
 	void clearCurrentDetachedPresetChanges() const;
+	void addCurrentPresetToHistory();
 
 	int currentBrushSlot() const;
 	bool isCurrentEraserSlot() const;
@@ -121,6 +123,8 @@ public:
 
 signals:
 	void presetIdChanged(int presetId, bool attached);
+	void presetStateChanged(int state);
+	void transientPresetChanged();
 	void colorChanged(const QColor &color);
 	void backgroundColorChanged(const QColor &color);
 	void eraseModeChanged(bool erase);
@@ -134,6 +138,9 @@ signals:
 	void editBrushRequested();
 	void overwriteBrushRequested();
 	void deleteBrushRequested();
+	void undeleteBrushRequested();
+	void saveTransientBrushRequested();
+	void deleteBrushHistoryRequested();
 	void stabilizerSettingsRequested();
 
 protected:
@@ -156,6 +163,10 @@ private:
 	void handlePresetChanged(
 		int presetId, const QString &name, const QString &description,
 		const QPixmap &thumbnail, const brushes::ActiveBrush &brush);
+	void handleTransientPresetChanged(
+		int presetId, int state, const QString &name,
+		const QString &description, const QPixmap &thumbnail);
+	void handlePresetStateChanged(int presetId, int state);
 	void handlePresetRemoved(int presetId);
 	void detachCurrentSlot();
 

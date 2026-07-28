@@ -57,6 +57,10 @@ private:
 		const QFontMetrics &fontMetrics, int w, int h, qreal dpr) const;
 
 	const QPixmap &getEditIcon(const QSize &size) const;
+	const QPixmap &getStateIcon(const QSize &size, int state) const;
+
+	static const QPixmap &
+	getIcon(QPixmap &inOutPixmap, const QSize &size, const QString &iconName);
 
 	static int calculateStrokeColumnCount(int width, int height, int multiplier)
 	{
@@ -68,6 +72,8 @@ private:
 	mutable QHash<int, Preview> m_cache;
 	mutable QReadWriteLock m_lock;
 	mutable QPixmap m_editIcon;
+	mutable QPixmap m_deletedIcon;
+	mutable QPixmap m_unsavedIcon;
 	mutable drawdance::BrushPreview m_brushPreview;
 	mutable CheckerBackground m_strokeBackground;
 };

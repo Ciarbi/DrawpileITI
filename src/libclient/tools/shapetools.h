@@ -31,6 +31,7 @@ public:
 
 	void cancelMultipart() final override;
 	bool usesBrushColor() const final override { return true; }
+	bool updatesBrushHistory() const final override { return true; }
 	void setBrushSizeLimit(int limit) override;
 	void setSelectionMaskingEnabled(bool selectionMaskingEnabled) override;
 
@@ -39,6 +40,7 @@ protected:
 	virtual QPointF getConstrainPoint() const;
 	void updatePreview();
 	QRectF rect() const { return QRectF(m_p1, m_p2).normalized(); }
+	qreal angle() const { return m_angle; }
 
 	QPointF m_start, m_current, m_p1, m_p2;
 	bool m_drawing = false;

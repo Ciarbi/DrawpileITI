@@ -8,6 +8,7 @@ extern "C" {
 #include "desktop/utils/blendmodes.h"
 #include "desktop/utils/widgetutils.h"
 #include "libclient/brushes/brush.h"
+#include "libclient/brushes/enums.h"
 #include "libclient/config/config.h"
 #include "libclient/tools/toolcontroller.h"
 #include "libclient/tools/toolproperties.h"
@@ -157,6 +158,9 @@ struct BrushSettings::Private {
 	QAction *overwriteBrushAction;
 	QAction *deleteBrushAction;
 	QAction *detachBrushAction;
+	QAction *undeleteBrushAction;
+	QAction *saveTransientBrushAction;
+	QAction *deleteBrushHistoryAction;
 
 	BrushType brushType = BrushType::PixelRound;
 	QActionGroup *brushTypeGroup;
@@ -334,6 +338,7 @@ void BrushSettings::connectBrushPresets(brushes::BrushPresetModel *brushPresets)
 				brushPresets->searchPresetBrushData(preset.id);
 			preset.attached = opt.has_value();
 			if(preset.attached) {
+				preset.state = opt->state;
 				preset.originalName = opt->originalName;
 				preset.originalDescription = opt->originalDescription;
 				preset.originalThumbnail = opt->originalThumbnail;
@@ -356,6 +361,12 @@ void BrushSettings::connectBrushPresets(brushes::BrushPresetModel *brushPresets)
 	connect(
 		brushPresets, &brushes::BrushPresetModel::presetChanged, this,
 		&BrushSettings::handlePresetChanged);
+	connect(
+		brushPresets, &brushes::BrushPresetModel::transientPresetChanged, this,
+		&BrushSettings::handleTransientPresetChanged);
+	connect(
+		brushPresets, &brushes::BrushPresetModel::presetStateChanged, this,
+		&BrushSettings::handlePresetStateChanged);
 	connect(
 		brushPresets, &brushes::BrushPresetModel::presetRemoved, this,
 		&BrushSettings::handlePresetRemoved);
@@ -444,6 +455,27 @@ QWidget *BrushSettings::createUiWidget(QWidget *parent)
 	connect(
 		d->deleteBrushAction, &QAction::triggered, this,
 		&BrushSettings::deleteBrushRequested);
+
+	d->undeleteBrushAction = d->menu->addAction(
+		QIcon::fromTheme(QStringLiteral("document-save-as")),
+		tr("Undelete Brush"));
+	connect(
+		d->undeleteBrushAction, &QAction::triggered, this,
+		&BrushSettings::undeleteBrushRequested);
+
+	d->saveTransientBrushAction = d->menu->addAction(
+		QIcon::fromTheme(QStringLiteral("document-save-as")),
+		tr("Save Brush…"));
+	connect(
+		d->saveTransientBrushAction, &QAction::triggered, this,
+		&BrushSettings::saveTransientBrushRequested);
+
+	d->deleteBrushHistoryAction = d->menu->addAction(
+		QIcon::fromTheme(QStringLiteral("edit-delete")),
+		tr("Remove Brush From History"));
+	connect(
+		d->deleteBrushHistoryAction, &QAction::triggered, this,
+		&BrushSettings::deleteBrushHistoryRequested);
 
 	d->menu->addSeparator();
 
@@ -601,8 +633,7 @@ QWidget *BrushSettings::createUiWidget(QWidget *parent)
 	d->useBrushSampleCountAction->setCheckable(true);
 	stabilizerMenu->addSeparator();
 	d->stabilizerSettingsAction = stabilizerMenu->addAction(
-		QIcon::fromTheme(QStringLiteral("pathshape")),
-		tr("Input Settings…"));
+		QIcon::fromTheme(QStringLiteral("pathshape")), tr("Input Settings…"));
 	d->stabilizerSettingsAction->setStatusTip(
 		tr("Show the input settings dialog for more stabilizer settings."));
 	d->ui.stabilizerButton->setMenu(stabilizerMenu);
@@ -889,7 +920,7 @@ void BrushSettings::setBrushPresetsAttach(bool brushPresetsAttach)
 					emit presetIdChanged(preset.id, preset.attached);
 					if(preset.attached) {
 						d->ui.preview->setPreset(
-							preset.effectivePreviewTitle(),
+							preset.state, preset.effectivePreviewTitle(),
 							preset.effectiveThumbnailPixmap(),
 							preset.hasChanges());
 						updateChangesInCurrentBrushPreset();
@@ -1009,6 +1040,11 @@ int BrushSettings::currentPresetId() const
 	return d->currentPreset().id;
 }
 
+int BrushSettings::currentPresetState() const
+{
+	return d->currentPreset().state;
+}
+
 const QString &BrushSettings::currentPresetName() const
 {
 	return d->currentPreset().effectiveName();
@@ -1041,6 +1077,15 @@ void BrushSettings::clearCurrentDetachedPresetChanges() const
 		preset.changedName = {};
 		preset.changedDescription = {};
 		preset.changedThumbnail = {};
+	}
+}
+
+void BrushSettings::addCurrentPresetToHistory()
+{
+	Preset &preset = d->currentPreset();
+	if(d->brushPresets && preset.valid &&
+	   (preset.attached || preset.reattach)) {
+		d->brushPresets->addPresetIdToHistory(preset.id);
 	}
 }
 
@@ -1378,9 +1423,23 @@ void BrushSettings::updateMenuActions()
 {
 	const Preset &preset = d->currentPreset();
 	bool attached = preset.isAttached();
+	bool isNormal = preset.state == int(brushes::PresetState::Normal);
+	bool isDeleted = preset.state == int(brushes::PresetState::Deleted);
+	bool isTransient = preset.state == int(brushes::PresetState::Transient);
 	d->resetBrushAction->setEnabled(preset.valid);
-	d->deleteBrushAction->setEnabled(attached);
 	d->detachBrushAction->setEnabled(attached);
+	d->newBrushAction->setEnabled(isNormal);
+	d->newBrushAction->setVisible(isNormal);
+	d->overwriteBrushAction->setEnabled(isNormal);
+	d->overwriteBrushAction->setVisible(isNormal);
+	d->deleteBrushAction->setEnabled(attached && isNormal);
+	d->deleteBrushAction->setVisible(!attached || isNormal);
+	d->undeleteBrushAction->setEnabled(attached && isDeleted);
+	d->undeleteBrushAction->setVisible(attached && isDeleted);
+	d->saveTransientBrushAction->setEnabled(attached && isTransient);
+	d->saveTransientBrushAction->setVisible(attached && isTransient);
+	d->deleteBrushHistoryAction->setEnabled(attached && !isNormal);
+	d->deleteBrushHistoryAction->setVisible(attached && !isNormal);
 }
 
 static void setSliderFromMyPaintSetting(
@@ -1591,8 +1650,8 @@ void BrushSettings::updateUi()
 	const Preset &preset = d->currentPreset();
 	if(preset.isAttached()) {
 		d->ui.preview->setPreset(
-			preset.effectivePreviewTitle(), preset.effectiveThumbnailPixmap(),
-			preset.hasChanges());
+			preset.state, preset.effectivePreviewTitle(),
+			preset.effectiveThumbnailPixmap(), preset.hasChanges());
 	} else {
 		d->ui.preview->clearPreset();
 	}
@@ -2202,8 +2261,55 @@ void BrushSettings::handlePresetChanged(
 			preset.changeBrush(d->brushAt(i), i == ERASER_SLOT_INDEX);
 			if(i == d->current) {
 				d->ui.preview->setPreset(
-					preset.effectivePreviewTitle(), thumbnail,
+					preset.state, preset.effectivePreviewTitle(), thumbnail,
 					preset.hasChanges());
+			}
+		}
+	}
+}
+
+void BrushSettings::handleTransientPresetChanged(
+	int presetId, int state, const QString &name, const QString &description,
+	const QPixmap &thumbnail)
+{
+	for(int i = 0; i < TOTAL_SLOT_COUNT; ++i) {
+		Preset &preset = d->presetAt(i);
+		if(preset.isAttached() && preset.id == presetId) {
+			preset.state = state;
+			preset.originalName = name;
+			preset.originalDescription = description;
+			preset.originalThumbnail.setPixmap(thumbnail);
+			if(preset.changedName.has_value()) {
+				preset.changeName(preset.changedName.value());
+			}
+			if(preset.changedDescription.has_value()) {
+				preset.changeDescription(preset.changedDescription.value());
+			}
+			if(preset.changedThumbnail.has_value()) {
+				preset.changeThumbnail(
+					preset.changedThumbnail->pixmap(presetId));
+			}
+			if(i == d->current) {
+				d->ui.preview->setPreset(
+					state, preset.effectivePreviewTitle(), thumbnail,
+					preset.hasChanges());
+				Q_EMIT transientPresetChanged();
+			}
+		}
+	}
+}
+
+void BrushSettings::handlePresetStateChanged(int presetId, int state)
+{
+	for(int i = 0; i < TOTAL_SLOT_COUNT; ++i) {
+		Preset &preset = d->presetAt(i);
+		if(preset.valid && preset.id == presetId) {
+			preset.state = state;
+			if(i == d->current) {
+				d->ui.preview->setPresetState(state);
+				d->ui.preview->setPresetTitle(preset.effectivePreviewTitle());
+				updateMenuActions();
+				Q_EMIT presetStateChanged(state);
 			}
 		}
 	}

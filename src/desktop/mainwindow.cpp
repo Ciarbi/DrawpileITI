@@ -98,6 +98,7 @@ extern "C" {
 #include "libclient/utils/customshortcutmodel.h"
 #include "libclient/utils/images.h"
 #include "libclient/utils/logging.h"
+#include "libclient/utils/pathinfo.h"
 #include "libclient/utils/scopedoverridecursor.h"
 #include "libclient/utils/selectionalteration.h"
 #include "libclient/utils/shortcutdetector.h"
@@ -475,9 +476,18 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	connect(m_sessionSettings, &dialogs::SessionSettingsDialog::requestUpdateAuthList, m_doc->client(), &net::Client::requestUpdateAuthList);
 
 	// Tool controller <-> UI connections
-	connect(m_doc->toolCtrl(), &tools::ToolController::colorUsed, m_dockToolSettings, &docks::ToolSettings::addLastUsedColor);
-	connect(m_doc->toolCtrl(), &tools::ToolController::actionCancelled, m_dockToolSettings->colorPickerSettings(), &tools::ColorPickerSettings::cancelPickFromScreen);
 	// clang-format on
+	connect(
+		m_doc->toolCtrl(), &tools::ToolController::colorUsed,
+		m_dockToolSettings, &docks::ToolSettings::addLastUsedColor);
+	connect(
+		m_doc->toolCtrl(), &tools::ToolController::currentBrushUsed,
+		m_dockToolSettings->brushSettings(),
+		&tools::BrushSettings::addCurrentPresetToHistory);
+	connect(
+		m_doc->toolCtrl(), &tools::ToolController::actionCancelled,
+		m_dockToolSettings->colorPickerSettings(),
+		&tools::ColorPickerSettings::cancelPickFromScreen);
 	connect(
 		m_dockToolSettings, &docks::ToolSettings::foregroundColorChanged,
 		m_dockToolSettings->colorPickerSettings(),
@@ -1156,8 +1166,7 @@ void MainWindow::updateTitle()
 {
 	QString name;
 	if(m_doc->haveCurrentPath()) {
-		QFileInfo info(m_doc->currentPath());
-		name = info.completeBaseName();
+		name = utils::PathInfo(m_doc->currentPath()).basenameWithoutExtension();
 	} else {
 		name = tr("Untitled");
 	}
@@ -1214,8 +1223,8 @@ void MainWindow::updateExportPath(const QString &path)
 		action->setText(tr("Export Again"));
 		action->setEnabled(false);
 	} else {
-		QFileInfo info(path);
-		action->setText(tr("Export Again to %1").arg(info.fileName()));
+		action->setText(
+			tr("Export Again to %1").arg(utils::PathInfo(path).basename()));
 		action->setEnabled(!path.isEmpty() && !m_doc->isSaveInProgress());
 	}
 }
@@ -2237,14 +2246,55 @@ void MainWindow::receiveCurrentBrush(int userId, const QJsonObject &info)
 		m_brushRequestTime.invalidate();
 		QJsonValue v = info[QStringLiteral("brush")];
 		if(v.isObject()) {
+			canvas::User user;
+			getUserById(userId, user);
+			brushes::ActiveBrush brush =
+				brushes::ActiveBrush::fromJson(v.toObject());
+
+			brushes::BrushPresetModel *presetModel =
+				dpApp().brushPresets()->presetModel();
+			int presetId = presetModel->handleReceivedBrush(user.name, brush);
+
 			tools::BrushSettings *bs = m_dockToolSettings->brushSettings();
-			bs->setCurrentBrushDetached(
-				brushes::ActiveBrush::fromJson(v.toObject()));
+			std::optional<brushes::Preset> preset;
+			if(presetId > 0) {
+				preset = presetModel->searchPresetBrushData(presetId);
+			}
+
+			if(preset.has_value()) {
+				bs->setCurrentBrushPreset(preset.value());
+			} else {
+				bs->setCurrentBrushDetached(brush);
+			}
+
 		} else if(info.value(QStringLiteral("confidential")).toBool()) {
 			m_chatbox->receiveSystemMessage(
 				tr("The requested brush does not allow others to use it."));
 		}
 	}
+}
+
+bool MainWindow::getUserById(int userId, canvas::User &outUser)
+{
+	canvas::CanvasModel *canvas = m_doc->canvas();
+	if(canvas) {
+		std::optional<canvas::User> u =
+			canvas->userlist()->getOptionalUserById(userId);
+		if(u.has_value()) {
+			outUser = u.value();
+			return true;
+		}
+	}
+	outUser = canvas::User{
+		userId, tr("User #%1").arg(userId),
+		{},		false,
+		false,	false,
+		false,	false,
+		false,	false,
+		false,	false,
+		false,
+	};
+	return false;
 }
 
 void MainWindow::fillArea(const QColor &color, int blendMode, float opacity)
@@ -2923,18 +2973,21 @@ void MainWindow::openPath(const QString &path, QTemporaryFile *tempFile)
 		}
 	}
 
-	if(QRegularExpression{"\\.dp(rec|txt)$", opt}.match(path).hasMatch()) {
+	QString basename = utils::PathInfo(path).basename();
+	if(QRegularExpression(QStringLiteral("\\.dp(rec|txt)$"), opt)
+		   .match(basename)
+		   .hasMatch()) {
 		bool isTemplate;
 		DP_LoadResult result =
 			m_doc->loadRecording(loadPath, false, &isTemplate);
 		showLoadResultMessage(result);
 		if(result == DP_LOAD_RESULT_SUCCESS && !isTemplate) {
-			QFileInfo fileinfo(path);
 			m_playbackDialog =
 				new dialogs::PlaybackDialog(m_doc->canvas(), this);
 			m_playbackDialog->setWindowTitle(
-				fileinfo.completeBaseName() + " - " +
-				m_playbackDialog->windowTitle());
+				QStringLiteral("%1 - %2")
+					.arg(utils::PathInfo::stripExtension(basename))
+					.arg(m_playbackDialog->windowTitle()));
 			m_playbackDialog->setAttribute(Qt::WA_DeleteOnClose);
 			m_playbackDialog->show();
 			m_playbackDialog->centerOnParent();
@@ -2960,15 +3013,16 @@ void MainWindow::openPath(const QString &path, QTemporaryFile *tempFile)
 		}
 
 	} else if(
-		QRegularExpression{"\\.drawdancedump$", opt}.match(path).hasMatch()) {
+		QRegularExpression(QStringLiteral("\\.drawdancedump$"), opt)
+			.match(basename)
+			.hasMatch()) {
 		DP_LoadResult result = m_doc->loadRecording(loadPath, true);
 		if(result == DP_LOAD_RESULT_SUCCESS) {
-			QFileInfo fileinfo{path};
 			m_dumpPlaybackDialog =
 				new dialogs::DumpPlaybackDialog{m_doc->canvas(), this};
 			m_dumpPlaybackDialog->setWindowTitle(
 				QStringLiteral("%1 - %2")
-					.arg(fileinfo.completeBaseName())
+					.arg(utils::PathInfo::stripExtension(basename))
 					.arg(m_dumpPlaybackDialog->windowTitle()));
 			m_dumpPlaybackDialog->setAttribute(Qt::WA_DeleteOnClose);
 			m_dumpPlaybackDialog->show();
@@ -3800,6 +3854,7 @@ void MainWindow::showBrushSettingsDialog(bool openOnPresetPage)
 			[brushSettings, presetModel, dlg](int presetId, bool attached) {
 				QSignalBlocker blocker(dlg);
 				dlg->setPresetAttached(attached, presetId);
+				dlg->setPresetState(brushSettings->currentPresetState());
 				dlg->setPresetName(brushSettings->currentPresetName());
 				dlg->setPresetDescription(
 					brushSettings->currentPresetDescription());
@@ -3812,6 +3867,20 @@ void MainWindow::showBrushSettingsDialog(bool openOnPresetPage)
 		connect(
 			brushSettings, &tools::BrushSettings::presetIdChanged, dlg,
 			updatePreset);
+		connect(
+			brushSettings, &tools::BrushSettings::transientPresetChanged, dlg,
+			[brushSettings, dlg] {
+				QSignalBlocker blocker(dlg);
+				dlg->setPresetState(brushSettings->currentPresetState());
+				dlg->setPresetName(brushSettings->currentPresetName());
+				dlg->setPresetDescription(
+					brushSettings->currentPresetDescription());
+				dlg->setPresetThumbnail(
+					brushSettings->currentPresetThumbnail());
+			});
+		connect(
+			brushSettings, &tools::BrushSettings::presetStateChanged, dlg,
+			&dialogs::BrushSettingsDialog::setPresetState);
 		connect(
 			dlg, &dialogs::BrushSettingsDialog::presetNameChanged,
 			brushSettings, &tools::BrushSettings::changeCurrentPresetName);
@@ -3857,6 +3926,15 @@ void MainWindow::showBrushSettingsDialog(bool openOnPresetPage)
 			m_dockBrushPalette,
 			std::bind(
 				&docks::BrushPalette::overwriteCurrentPreset,
+				m_dockBrushPalette, dlg));
+		connect(
+			dlg, &dialogs::BrushSettingsDialog::undeleteBrushRequested,
+			m_dockBrushPalette, &docks::BrushPalette::undeleteCurrentPreset);
+		connect(
+			dlg, &dialogs::BrushSettingsDialog::saveTransientBrushRequested,
+			m_dockBrushPalette,
+			std::bind(
+				&docks::BrushPalette::saveCurrentTransientPreset,
 				m_dockBrushPalette, dlg));
 		connect(
 			presetModel, &brushes::BrushPresetModel::presetShortcutChanged, dlg,
@@ -5701,7 +5779,7 @@ void MainWindow::dropUrl(const QUrl &url)
 {
 	if(url.isLocalFile()) {
 		QString path = url.toLocalFile();
-		QString suffix = QFileInfo(path).suffix();
+		QString suffix = utils::PathInfo(path).extension();
 		if(suffix.compare(QStringLiteral("zip"), Qt::CaseInsensitive) == 0) {
 			m_dockBrushPalette->importBrushesFrom(path);
 		} else if(
@@ -5924,10 +6002,8 @@ void MainWindow::showUserInfoDialog(int userId)
 		}
 	}
 
-	canvas::User user = m_doc->canvas()->userlist()->getOptionalUserById(userId)
-		.value_or(canvas::User{
-			userId, tr("User #%1").arg(userId), {}, false, false, false, false,
-			false, false, false, false, false, false});
+	canvas::User user;
+	getUserById(userId, user);
 	dialogs::UserInfoDialog *dlg = new dialogs::UserInfoDialog{user, this};
 	dlg->setAttribute(Qt::WA_DeleteOnClose);
 	connect(dlg, &dialogs::UserInfoDialog::requestUserInfo, this,

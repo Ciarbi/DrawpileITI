@@ -1524,56 +1524,38 @@ resize_layer_content_aligned(DP_LayerContent *lc, int top, int left, int width,
     return tlc;
 }
 
-static void calculate_resize_offsets(int offset, int *out_pos, int *out_crop)
+static DP_TransientLayerContent *resize_layer_content_copy(DP_LayerContent *lc,
+                                                           int top, int left,
+                                                           int width,
+                                                           int height)
 {
-    if (offset < 0) {
-        *out_pos = 0;
-        *out_crop = -offset;
-    }
-    else {
-        *out_pos = offset;
-        *out_crop = 0;
-    }
-}
-
-static DP_TransientLayerContent *
-resize_layer_content_copy(DP_LayerContent *lc, unsigned int context_id, int top,
-                          int left, int width, int height)
-{
-    // TODO: This operation is super expensive and obliterates change
-    // information. It could be solved by storing an x and y pixel offset in the
-    // layer instead. Need more functionality to test that out though.
-    DP_Image *img = DP_layer_content_to_image(lc);
-
-    int x, y, crop_x, crop_y;
-    calculate_resize_offsets(left, &x, &crop_x);
-    calculate_resize_offsets(top, &y, &crop_y);
-    if (crop_x != 0 || crop_y != 0) {
-        int img_width = DP_image_width(img);
-        int img_height = DP_image_height(img);
-        if (crop_x < img_width && crop_y < img_height) {
-            DP_Image *tmp = DP_image_new_subimage(
-                img, crop_x, crop_y, img_width - crop_x, img_height - crop_y);
-            DP_image_free(img);
-            img = tmp;
-        }
-        else { // Nothing to do, resulting image is out of bounds.
-            DP_image_free(img);
-            return DP_transient_layer_content_new_init(width, height, NULL);
-        }
-    }
-
     DP_TransientLayerContent *tlc =
         DP_transient_layer_content_new_init(width, height, NULL);
-    DP_transient_layer_content_put_image(tlc, context_id, DP_BLEND_MODE_REPLACE,
-                                         x, y, img);
-    DP_image_free(img);
 
+    DP_Rect dst = DP_rect_make(-left, -top, width, height);
+    DP_TileIterator ti = DP_tile_iterator_make(lc->width, lc->height, dst);
+    while (DP_tile_iterator_next(&ti)) {
+        DP_Tile *t = DP_layer_content_tile_at_noinc(lc, ti.col, ti.row);
+        if (t) {
+            unsigned int tile_context_id = DP_tile_context_id(t);
+            DP_TileIntoDstIterator tidi = DP_tile_into_dst_iterator_make(&ti);
+            while (DP_tile_into_dst_iterator_next(&tidi)) {
+                if (tidi.dst_x >= 0 && tidi.dst_x < width && tidi.dst_y >= 0
+                    && tidi.dst_y < height) {
+                    DP_Pixel15 p =
+                        DP_tile_pixel_at(t, tidi.tile_x, tidi.tile_y);
+                    if (p.a != 0) {
+                        DP_transient_layer_content_pixel_at_set(
+                            tlc, tile_context_id, tidi.dst_x, tidi.dst_y, p);
+                    }
+                }
+            }
+        }
+    }
     return tlc;
 }
 
 static DP_TransientLayerContent *resize_layer_content(DP_LayerContent *lc,
-                                                      unsigned int context_id,
                                                       int top, int left,
                                                       int width, int height)
 {
@@ -1583,8 +1565,7 @@ static DP_TransientLayerContent *resize_layer_content(DP_LayerContent *lc,
     }
     else {
         DP_debug("Resize: layer must be copied");
-        return resize_layer_content_copy(lc, context_id, top, left, width,
-                                         height);
+        return resize_layer_content_copy(lc, top, left, width, height);
     }
 }
 
@@ -1600,7 +1581,7 @@ DP_TransientLayerContent *DP_layer_content_resize(DP_LayerContent *lc,
     int height = lc->height + top + bottom;
     DP_TransientLayerContent *tlc;
     if (DP_layer_content_has_content(lc)) {
-        tlc = resize_layer_content(lc, context_id, top, left, width, height);
+        tlc = resize_layer_content(lc, top, left, width, height);
     }
     else {
         DP_debug("Resize: layer is blank");
@@ -2110,22 +2091,23 @@ static void create_sublayer(DP_TransientLayerContent *tlc, int sublayer_id,
 #define PUT_IMAGE_PIXEL_PUT  1
 #define PUT_IMAGE_PIXEL_SET  2
 
-static int put_image_handle_pixel(int blend_mode, DP_Pixel8 pixel,
-                                  DP_Pixel15 *out_dst_pixel)
+static int put_image_handle_pixel(bool tile_was_present, int blend_mode,
+                                  DP_Pixel8 pixel, DP_Pixel15 *out_dst_pixel)
 {
     switch (blend_mode) {
     case DP_BLEND_MODE_ERASE:
-        if (pixel.a == 255) {
+    case DP_BLEND_MODE_ERASE_PRESERVE:
+        if (!tile_was_present || pixel.a == 0) {
+            return PUT_IMAGE_PIXEL_SKIP;
+        }
+        else if (pixel.a == 255) {
             *out_dst_pixel = DP_pixel15_zero();
             return PUT_IMAGE_PIXEL_SET;
         }
-        else if (pixel.a != 0) {
+        else {
             uint16_t a = DP_channel8_to_15(pixel.a);
             *out_dst_pixel = (DP_Pixel15){a, a, a, a};
             return PUT_IMAGE_PIXEL_PUT;
-        }
-        else {
-            return PUT_IMAGE_PIXEL_SKIP;
         }
     case DP_BLEND_MODE_NORMAL:
         if (pixel.a == 255) {
@@ -2143,8 +2125,13 @@ static int put_image_handle_pixel(int blend_mode, DP_Pixel8 pixel,
         *out_dst_pixel = DP_pixel8_to_15(pixel);
         return pixel.a == 255 ? PUT_IMAGE_PIXEL_SET : PUT_IMAGE_PIXEL_PUT;
     case DP_BLEND_MODE_REPLACE:
-        *out_dst_pixel = DP_pixel8_to_15(pixel);
-        return PUT_IMAGE_PIXEL_SET;
+        if (tile_was_present || pixel.a != 0) {
+            *out_dst_pixel = DP_pixel8_to_15(pixel);
+            return PUT_IMAGE_PIXEL_SET;
+        }
+        else {
+            return PUT_IMAGE_PIXEL_SKIP;
+        }
     default:
         if (pixel.a != 0) {
             *out_dst_pixel = DP_pixel8_to_15(pixel);
@@ -2174,13 +2161,15 @@ void DP_transient_layer_content_put_pixels(DP_TransientLayerContent *tlc,
 
     while (DP_tile_iterator_next(&ti)) {
         int i = ti.row * wt + ti.col;
-        if (tlc->elements[i].tile || DP_blend_mode_blend_blank(blend_mode)) {
+        bool tile_present = tlc->elements[i].tile;
+        if (tile_present || DP_blend_mode_blend_blank(blend_mode)) {
             DP_TileIntoDstIterator tidi = DP_tile_into_dst_iterator_make(&ti);
             DP_TransientTile *tt = NULL;
             while (DP_tile_into_dst_iterator_next(&tidi)) {
                 DP_Pixel8 pixel = pixels[tidi.dst_y * width + tidi.dst_x];
                 DP_Pixel15 dst_pixel;
-                switch (put_image_handle_pixel(blend_mode, pixel, &dst_pixel)) {
+                switch (put_image_handle_pixel(tile_present, blend_mode, pixel,
+                                               &dst_pixel)) {
                 case PUT_IMAGE_PIXEL_SKIP:
                     break;
                 case PUT_IMAGE_PIXEL_PUT:
