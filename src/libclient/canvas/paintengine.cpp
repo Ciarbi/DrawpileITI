@@ -207,6 +207,17 @@ void PaintEngine::enqueueReset()
 	receiveMessages(false, 1, &msg);
 }
 
+void PaintEngine::enqueueResetToState(const drawdance::CanvasState &canvasState)
+{
+	if(canvasState.isNull()) {
+		enqueueReset();
+	} else {
+		net::Message msg = net::Message::noinc(
+			DP_msg_internal_reset_to_state_new(0u, canvasState.getInc()));
+		receiveMessages(false, 1, &msg);
+	}
+}
+
 void PaintEngine::enqueueLoadBlank(
 	int undoDepthLimit, const QSize &size, const QColor &backgroundColor,
 	const QString &initialLayerName, const QString &initialTrackName)
@@ -677,70 +688,6 @@ void PaintEngine::enqueueProjectSnapshotRequest()
 bool PaintEngine::hasPlayback() const
 {
 	return m_paintEngine.hasPlayback();
-}
-
-DP_PlayerResult PaintEngine::stepPlayback(long long steps)
-{
-	net::MessageList msgs;
-	DP_PlayerResult result = m_paintEngine.stepPlayback(steps, msgs);
-	receiveMessages(false, msgs.count(), msgs.constData(), true);
-	return result;
-}
-
-DP_PlayerResult PaintEngine::skipPlaybackBy(long long steps, bool bySnapshots)
-{
-	net::MessageList msgs;
-	DP_PlayerResult result =
-		m_paintEngine.skipPlaybackBy(steps, bySnapshots, msgs);
-	receiveMessages(false, msgs.count(), msgs.constData(), true);
-	return result;
-}
-
-DP_PlayerResult PaintEngine::jumpPlaybackTo(long long position)
-{
-	net::MessageList msgs;
-	DP_PlayerResult result = m_paintEngine.jumpPlaybackTo(position, msgs);
-	receiveMessages(false, msgs.count(), msgs.constData(), true);
-	return result;
-}
-
-DP_PlayerResult PaintEngine::beginPlayback()
-{
-	return m_paintEngine.beginPlayback();
-}
-
-DP_PlayerResult PaintEngine::playPlayback(long long msecs)
-{
-	net::MessageList msgs;
-	DP_PlayerResult result = m_paintEngine.playPlayback(msecs, msgs);
-	receiveMessages(false, msgs.count(), msgs.constData(), true);
-	return result;
-}
-
-bool PaintEngine::buildPlaybackIndex(
-	drawdance::PaintEngine::BuildIndexProgressFn progressFn)
-{
-	return m_paintEngine.buildPlaybackIndex(progressFn);
-}
-
-bool PaintEngine::loadPlaybackIndex()
-{
-	return m_paintEngine.loadPlaybackIndex();
-}
-
-unsigned int PaintEngine::playbackIndexMessageCount()
-{
-	return m_paintEngine.playbackIndexMessageCount();
-}
-
-size_t PaintEngine::playbackIndexEntryCount()
-{
-	return m_paintEngine.playbackIndexEntryCount();
-}
-
-QImage PaintEngine::playbackIndexThumbnailAt(size_t index)
-{
-	return m_paintEngine.playbackIndexThumbnailAt(index);
 }
 
 DP_PlayerResult PaintEngine::stepDumpPlayback()

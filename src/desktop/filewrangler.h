@@ -78,6 +78,7 @@ public:
 	void openReferenceImage(const ImageOpenFn &imageOpenCompleted);
 
 	void openMain(const MainOpenFn &onOpen) const;
+	void openPlayback(const MainOpenFn &onOpen) const;
 	QStringList openAnimationFramesImport() const;
 	void openAnimationLayersImport(const MainOpenFn &onOpen) const;
 	void openDebugDump(const MainOpenFn &onOpen) const;
@@ -119,12 +120,6 @@ public:
 	QString getSaveAnimationApngPath() const;
 	QString getSavePerformanceProfilePath() const;
 	QString getSaveTabletEventLogPath() const;
-#ifdef HAVE_VIDEO_EXPORT
-	QString getSaveFfmpegMp4Path() const;
-	QString getSaveFfmpegWebmPath() const;
-	QString getSaveFfmpegCustomPath() const;
-	QString getSaveImageSeriesPath() const;
-#endif
 
 #ifdef __EMSCRIPTEN__
 	void downloadImage(Document *doc) const;

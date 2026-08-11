@@ -45,12 +45,14 @@ AnimationSaverRunnable::AnimationSaverRunnable(
 {
 }
 
+#ifdef DP_LIBAV
 namespace {
 union VideoParams {
 	DP_SaveVideoFfmpegParams ffmpeg;
 	DP_SaveVideoAndroidParams android;
 };
 }
+#endif
 
 void AnimationSaverRunnable::run()
 {
@@ -204,7 +206,9 @@ void AnimationSaverRunnable::run()
 	}
 
 	if(result != DP_SAVE_RESULT_SUCCESS) {
-		qWarning("Error %d saving animation: %s", int(result), DP_error());
+		qWarning(
+			"Error %d saving animation: %s", int(result),
+			result == DP_SAVE_RESULT_CANCEL ? "cancelled" : DP_error());
 	}
 
 #ifdef __EMSCRIPTEN__
