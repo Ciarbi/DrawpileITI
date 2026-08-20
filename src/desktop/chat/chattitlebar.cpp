@@ -2,6 +2,8 @@
 
 #include "desktop/chat/chattitlebar.h"
 
+#include "desktop/utils/qtguicompat.h"
+
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
@@ -62,7 +64,7 @@ ChatTitleBar::ChatTitleBar(QWidget *parent)
 void ChatTitleBar::mousePressEvent(QMouseEvent *event)
 {
 	if(event->button() == Qt::LeftButton && parentWidget()) {
-		m_dragStart = event->globalPos() - parentWidget()->frameGeometry().topLeft();
+		m_dragStart = compat::globalPos(*event) - parentWidget()->frameGeometry().topLeft();
 		event->accept();
 	} else {
 		QWidget::mousePressEvent(event);
@@ -72,7 +74,7 @@ void ChatTitleBar::mousePressEvent(QMouseEvent *event)
 void ChatTitleBar::mouseMoveEvent(QMouseEvent *event)
 {
 	if((event->buttons() & Qt::LeftButton) && parentWidget()) {
-		parentWidget()->move(event->globalPos() - m_dragStart);
+		parentWidget()->move(compat::globalPos(*event) - m_dragStart);
 		event->accept();
 	} else {
 		QWidget::mouseMoveEvent(event);

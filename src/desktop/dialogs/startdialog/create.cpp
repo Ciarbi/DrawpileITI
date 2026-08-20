@@ -130,12 +130,12 @@ Create::Create(QWidget *parent)
 			bool hasCustom =
 				m_presetCombo->count() > 0 &&
 				m_presetCombo->itemText(0) == tr("Custom");
-			int presetIndex = index - (hasCustom ? 1 : 0);
-			if(presetIndex < 0) {
+			int presetIdx = index - (hasCustom ? 1 : 0);
+			if(presetIdx < 0) {
 				return;
 			}
 
-			const PresetSize &preset = presetSizes[presetIndex];
+			const PresetSize &preset = presetSizes[presetIdx];
 			m_applyingPreset = true;
 			m_customDimensions = false;
 			m_widthSpinner->setValue(preset.width);

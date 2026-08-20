@@ -327,8 +327,11 @@ endif()
 disable_automoc_warnings()
 
 # Since Android is cross-compiled it is already always creating a distributable
-# build
-if(DIST_BUILD OR APPIMAGE)
+# build. However, DrawpileDistBuild sets up desktop deployment tools (linuxdeploy,
+# macdeployqt, windeployqt) that are not applicable to Android, which uses
+# androiddeployqt built into the build system. Including it would cause the
+# linuxdeploy install(CODE) step to fail during `cmake --install`.
+if((DIST_BUILD OR APPIMAGE) AND NOT ANDROID)
 	include(DrawpileDistBuild)
 endif()
 

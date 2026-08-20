@@ -2441,7 +2441,7 @@ void MainWindow::setToolBarConfig(const QVariantHash &cfg)
 					m_shapesButton = new widgets::GroupedToolButton(this);
 					m_shapesButton->setPopupMode(QToolButton::InstantPopup);
 					QMenu *shapesMenu = new QMenu(m_shapesButton);
-					auto addShapeAction = [shapesMenu](QAction *a) {
+					auto addShapeAction = [shapesMenu, this](QAction *a) {
 						QAction *menuAction = shapesMenu->addAction(a->icon(), a->text());
 						menuAction->setStatusTip(a->statusTip());
 						connect(menuAction, &QAction::triggered, a, &QAction::trigger);

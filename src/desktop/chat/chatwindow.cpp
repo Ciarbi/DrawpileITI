@@ -139,11 +139,11 @@ void ChatWindow::mousePressEvent(QMouseEvent *event)
 	m_resizeBorder = resizeBorderAt(pos);
 	if(m_resizeBorder != None && event->button() == Qt::LeftButton) {
 		m_resizing = true;
-		m_dragStart = event->globalPos();
+		m_dragStart = compat::globalPos(*event);
 		m_initialGeometry = geometry();
 		event->accept();
 	} else if(event->button() == Qt::LeftButton) {
-		m_dragStart = event->globalPos() - frameGeometry().topLeft();
+		m_dragStart = compat::globalPos(*event) - frameGeometry().topLeft();
 		m_resizing = false;
 		event->accept();
 	} else {
@@ -154,7 +154,7 @@ void ChatWindow::mousePressEvent(QMouseEvent *event)
 void ChatWindow::mouseMoveEvent(QMouseEvent *event)
 {
 	if(m_resizing) {
-		QPoint delta = event->globalPos() - m_dragStart;
+		QPoint delta = compat::globalPos(*event) - m_dragStart;
 		QRect geom = m_initialGeometry;
 		if(m_resizeBorder & Left) {
 			geom.setLeft(geom.left() + delta.x());
@@ -186,7 +186,7 @@ void ChatWindow::mouseMoveEvent(QMouseEvent *event)
 		setGeometry(geom);
 		event->accept();
 	} else if(event->buttons() & Qt::LeftButton && !m_resizing) {
-		move(event->globalPos() - m_dragStart);
+		move(compat::globalPos(*event) - m_dragStart);
 		event->accept();
 	}
 	updateCursor(event->pos());
@@ -209,7 +209,7 @@ bool ChatWindow::eventFilter(QObject *watched, QEvent *event)
 {
 	if(event->type() == QEvent::MouseMove) {
 		QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-		QPoint pos = mapFromGlobal(mouseEvent->globalPos());
+		QPoint pos = mapFromGlobal(compat::globalPos(*mouseEvent));
 		if(!m_resizing) {
 			updateCursor(pos);
 			// Set cursor on child widget to make resize handles visible
@@ -217,7 +217,7 @@ bool ChatWindow::eventFilter(QObject *watched, QEvent *event)
 				w->setCursor(cursor());
 			}
 		} else {
-			QPoint delta = mouseEvent->globalPos() - m_dragStart;
+			QPoint delta = compat::globalPos(*mouseEvent) - m_dragStart;
 			QRect geom = m_initialGeometry;
 			if(m_resizeBorder & Left) {
 				geom.setLeft(geom.left() + delta.x());
@@ -237,16 +237,16 @@ bool ChatWindow::eventFilter(QObject *watched, QEvent *event)
 		}
 	} else if(event->type() == QEvent::MouseButtonPress) {
 		QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-		QPoint pos = mapFromGlobal(mouseEvent->globalPos());
+		QPoint pos = mapFromGlobal(compat::globalPos(*mouseEvent));
 		m_resizeBorder = resizeBorderAt(pos);
 		if(m_resizeBorder != None && mouseEvent->button() == Qt::LeftButton) {
 			m_resizing = true;
-			m_dragStart = mouseEvent->globalPos();
+			m_dragStart = compat::globalPos(*mouseEvent);
 			m_initialGeometry = geometry();
 			mouseEvent->accept();
 			return true;
 		} else if(mouseEvent->button() == Qt::LeftButton) {
-			m_dragStart = mouseEvent->globalPos() - frameGeometry().topLeft();
+			m_dragStart = compat::globalPos(*mouseEvent) - frameGeometry().topLeft();
 			m_resizing = false;
 			mouseEvent->accept();
 			return true;

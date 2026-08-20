@@ -14,11 +14,18 @@
 # in the project root directory.
 #
 # Usage:
-#   ./pkg/build-appimage.sh [--clean] [--help]
+#   ./pkg/build-appimage.sh [--clean] [--resume] [--verify-only] [--help]
 #
 # Options:
-#   --clean     Remove the build directory before configuring
-#   -h, --help  Show this help message
+#   --clean        Remove the build directory before configuring
+#   --resume       Skip the cmake --install step if the AppDir already exists
+#                  and is fully populated. If some mods are missing, only the
+#                  install step is run. If the AppDir is incomplete or
+#                  corrupted, it is cleaned and the full install is run.
+#   --verify-only  Check the current AppDir state and linuxdeploy binaries
+#                  without building. Exit 0 if everything is verified,
+#                  non-zero otherwise.
+#   -h, --help     Show this help message
 #
 
 set -euo pipefail
@@ -36,10 +43,38 @@ LINUXDEPLOY_RELEASE_URL="https://github.com/linuxdeploy/linuxdeploy/releases/dow
 LINUXDEPLOY_QT_RELEASE_URL="https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous"
 
 CLEAN=0
+RESUME=0
+VERIFY_ONLY=0
+
+# State file for AppDir verification (stores checksums of installed files)
+APPDIR_STATE_DIR="${PROJECT_DIR}/.kilo/appdir-state"
+APPDIR_STATE_FILE="${APPDIR_STATE_DIR}/state.json"
 
 # Resolved path to the qmake executable (set during dependency check, used at
 # install time so linuxdeploy-plugin-qt can locate Qt).
 qmake_path=""
+
+# List of AppDir mods that linuxdeploy creates during the install step.
+# Each entry is "name|check_path|type" where type is:
+#   "dir"          - must exist as a directory
+#   "file"         - must exist as a regular file
+#   "elf"          - must exist as a regular ELF file (executable)
+#   "nonempty_dir" - must exist and contain at least one file
+#   "nonempty_file"- must exist and be non-empty
+APPDIR_MODS=(
+  "appdir_structure|${BUILD_DIR}/usr|dir"
+  "apprun|${BUILD_DIR}/AppRun|file"
+  "executables|${BUILD_DIR}/usr/bin|nonempty_dir"
+  "drawpile_elf|${BUILD_DIR}/usr/bin/drawpile|elf"
+  "drawpile_srv_elf|${BUILD_DIR}/usr/bin/drawpile-srv|elf"
+  "shared_libraries|${BUILD_DIR}/usr/lib|nonempty_dir"
+  "qt_plugins|${BUILD_DIR}/usr/plugins|nonempty_dir"
+  "platform_plugins|${BUILD_DIR}/usr/plugins/platforms|nonempty_dir"
+  "desktop_file|${BUILD_DIR}/usr/share/applications|nonempty_dir"
+  "icons|${BUILD_DIR}/usr/share/icons|nonempty_dir"
+  "translations|${BUILD_DIR}/usr/translations|nonempty_dir"
+  "application_data|${BUILD_DIR}/usr/share/drawpile|nonempty_dir"
+)
 
 # ---------------------------------------------------------------------------
 # Output helpers
