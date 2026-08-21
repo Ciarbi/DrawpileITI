@@ -111,6 +111,8 @@ target_sources(drawpile PRIVATE
 	dialogs/canvasshortcutsdialog.h
 	dialogs/certificateview.cpp
 	dialogs/certificateview.h
+	dialogs/choicedialog.cpp
+	dialogs/choicedialog.h
 	dialogs/colordialog.cpp
 	dialogs/colordialog.h
 	dialogs/curvepresetdialog.cpp
@@ -773,6 +775,8 @@ if(NOT EMSCRIPTEN)
 	target_sources(drawpile PRIVATE
 		dialogs/projectdialog.cpp
 		dialogs/projectdialog.h
+		dialogs/projecteditdialog.cpp
+		dialogs/projecteditdialog.h
 		dialogs/startdialog/recent.cpp
 		dialogs/startdialog/recent.h
 		dialogs/startdialog/updatenotice.cpp

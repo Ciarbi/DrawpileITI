@@ -8,6 +8,7 @@
 #include "compress.h"
 #include "document_metadata.h"
 #include "draw_context.h"
+#include "image.h"
 #include "key_frame.h"
 #include "layer_content.h"
 #include "layer_group.h"
@@ -15,6 +16,7 @@
 #include "layer_props.h"
 #include "layer_props_list.h"
 #include "local_state.h"
+#include "playback.h"
 #include "selection.h"
 #include "selection_set.h"
 #include "snapshots.h"
@@ -1515,6 +1517,63 @@ int DP_project_session_resume(DP_Project *prj, long long session_id,
     return result;
 }
 
+int DP_project_session_thumbnail_set(DP_Project *prj, DP_CanvasState *cs,
+                                     DP_DrawContext *dc_or_null,
+                                     bool (*thumb_write_fn)(void *, DP_Image *,
+                                                            DP_Output *),
+                                     void *thumb_write_user)
+{
+    if (!prj) {
+        DP_error_set("No project given");
+        return DP_PROJECT_SESSION_THUMBNAIL_ERROR_MISUSE;
+    }
+
+    long long session_id = prj->session_id;
+    if (session_id == 0LL) {
+        DP_error_set("No open session");
+        return DP_PROJECT_SESSION_THUMBNAIL_ERROR_NOT_OPEN;
+    }
+
+    sqlite3_stmt *stmt = ps_prepare_ephemeral(
+        prj, "update sessions set thumbnail = ? where session_id = ?");
+    if (!stmt) {
+        return DP_PROJECT_SESSION_THUMBNAIL_ERROR_PREPARE;
+    }
+
+    void *data;
+    size_t size;
+    if (cs && thumb_write_fn && DP_canvas_state_width(cs) > 0
+        && DP_canvas_state_height(cs) > 0) {
+        if (!DP_image_thumbnail_from_canvas_write(
+                cs, dc_or_null, DP_PROJECT_THUMBNAIL_SIZE,
+                DP_PROJECT_THUMBNAIL_SIZE, thumb_write_fn, thumb_write_user,
+                &data, &size)) {
+            return DP_PROJECT_SESSION_THUMBNAIL_ERROR_GENERATE;
+        }
+    }
+    else {
+        data = NULL;
+        size = 0;
+    }
+
+    bool bind_ok = ps_bind_blob_or_null(prj, stmt, 1, data, size)
+                && ps_bind_int64(prj, stmt, 2, session_id);
+    if (!bind_ok) {
+        DP_free(data);
+        sqlite3_finalize(stmt);
+        return DP_PROJECT_SESSION_THUMBNAIL_ERROR_PREPARE;
+    }
+
+    bool write_ok = ps_exec_write(prj, stmt, NULL);
+    DP_free(data);
+    sqlite3_finalize(stmt);
+    if (!write_ok) {
+        return DP_PROJECT_SESSION_THUMBNAIL_ERROR_QUERY;
+    }
+
+    return 0;
+}
+
 int DP_project_session_close(DP_Project *prj, unsigned int flags_to_set)
 {
     if (!prj) {
@@ -1652,10 +1711,21 @@ DP_ProjectSessionTimes DP_project_session_times_null(void)
     return (DP_ProjectSessionTimes){0LL, 0LL, 0.0};
 }
 
+static bool is_infinitesimal_backwards_time(double last_recorded_at,
+                                            double recorded_at)
+{
+    // Anything less than a millisecond of backward step is probably just a
+    // rounding error, we'll ignore those.
+    return last_recorded_at - recorded_at < 0.001;
+}
+
 static bool has_minute_passed(double last_recorded_at, double recorded_at)
 {
     if (last_recorded_at <= recorded_at) {
         return (recorded_at - last_recorded_at) >= 60.0;
+    }
+    else if (is_infinitesimal_backwards_time(last_recorded_at, recorded_at)) {
+        return false;
     }
     else {
         DP_warn("Recorded time went backwards, from %f to %f", last_recorded_at,
@@ -3371,7 +3441,9 @@ static bool project_save_copy_messages_insert(
     DP_Project *prj = c->prj;
     sqlite3_stmt *stmt = c->insert_stmt;
     DP_Mutex *mutex = prj->snapshot.mutex;
-    DP_MUTEX_MUST_LOCK(mutex);
+    if (mutex) {
+        DP_MUTEX_MUST_LOCK(mutex);
+    }
     bool ok = ps_bind_int64(prj, stmt, 2, sequence_id)
            && ps_bind_double(prj, stmt, 3,
                              DP_llong_to_double(recorded_at_msec) / 1000.0)
@@ -3380,7 +3452,9 @@ static bool project_save_copy_messages_insert(
            && ps_bind_int64(prj, stmt, 6, context_id)
            && ps_bind_blob_or_null(prj, stmt, 7, body, body_length)
            && ps_exec_write(prj, stmt, NULL);
-    DP_MUTEX_MUST_UNLOCK(mutex);
+    if (mutex) {
+        DP_MUTEX_MUST_UNLOCK(mutex);
+    }
     return ok;
 }
 
@@ -3876,6 +3950,63 @@ int DP_project_save_state(DP_CanvasState *cs, const char *path,
     else {
         return save_result;
     }
+}
+
+int DP_project_session_save(DP_Project *prj, DP_CanvasState *cs,
+                            bool (*thumb_write_fn)(void *, DP_Image *,
+                                                   DP_Output *),
+                            void *thumb_write_user)
+{
+    if (!prj) {
+        DP_error_set("No project given");
+        return DP_PROJECT_SAVE_ERROR_MISUSE;
+    }
+
+    long long session_id = prj->session_id;
+    if (session_id == 0LL) {
+        DP_error_set("No open session");
+        return DP_PROJECT_SAVE_ERROR_NO_SESSION;
+    }
+
+    long long save_snapshot_id =
+        project_snapshot_open(prj, DP_PROJECT_SNAPSHOT_FLAG_CANVAS, session_id,
+                              prj->sequence_id, false);
+    if (save_snapshot_id < 1LL) {
+        return DP_PROJECT_SAVE_ERROR_WRITE;
+    }
+
+    int snapshot_canvas_result =
+        snapshot_canvas(prj, cs, thumb_write_fn, thumb_write_user, NULL, NULL);
+    if (snapshot_canvas_result != 0) {
+        return DP_PROJECT_SAVE_ERROR_WRITE;
+    }
+
+    if (snapshot_finish(prj) != 0) {
+        return DP_PROJECT_SAVE_ERROR_WRITE;
+    }
+
+    sqlite3_stmt *stmt = ps_prepare_ephemeral(
+        prj, "update sessions set thumbnail = (\n"
+             "    select thumbnail from snapshots where snapshot_id = ?)\n"
+             "where session_id = ?");
+    if (!stmt) {
+        return DP_PROJECT_SAVE_ERROR_PREPARE;
+    }
+
+    bool bind_ok = ps_bind_int64(prj, stmt, 1, save_snapshot_id)
+                && ps_bind_int64(prj, stmt, 2, session_id);
+    if (!bind_ok) {
+        sqlite3_finalize(stmt);
+        return DP_PROJECT_SAVE_ERROR_PREPARE;
+    }
+
+    bool write_ok = ps_exec_write(prj, stmt, NULL);
+    sqlite3_finalize(stmt);
+    if (!write_ok) {
+        return DP_PROJECT_SAVE_ERROR_QUERY;
+    }
+
+    return 0;
 }
 
 
@@ -5759,15 +5890,11 @@ static bool multi_zstd_handle(DP_ProjectMultiZstdContext *c, size_t body_length,
 }
 
 
-#define MAX_MULTIDAB_COUNT 8192
-#define FILTER_PASS        0
-#define FILTER_IGNORE      1
-#define FILTER_ABORT       2
+#define FILTER_PASS   0
+#define FILTER_IGNORE 1
+#define FILTER_ABORT  2
 
 typedef struct DP_ProjectPlaybackContext DP_ProjectPlaybackContext;
-
-typedef void (*DP_ProjectPlaybackHandleFn)(DP_ProjectPlaybackContext *c,
-                                           DP_Message *msg);
 
 typedef DP_CanvasState *(*DP_ProjectPlaybackLoadSnapshotFn)(
     DP_Project *prj, DP_DrawContext *dc, long long session_id);
@@ -5852,12 +5979,8 @@ struct DP_ProjectPlaybackState {
 
 struct DP_ProjectPlaybackContext {
     DP_Project *prj;
-    DP_CanvasHistory *ch;
-    DP_DrawContext *dc;
-    DP_LocalState *ls;
+    DP_Playback *pb;
     DP_ProjectMultiZstdContext mzc;
-    DP_Message **multidab_msgs;
-    int multidab_count;
     DP_Vector continues;
     DP_ProjectPlaybackLoadSnapshotFn load_snapshot_fn;
     DP_ProjectPlaybackFilterFn filter_fn;
@@ -5885,12 +6008,8 @@ playback_context_init(DP_ProjectPlaybackContext *c, DP_Project *prj,
 {
     *c = (DP_ProjectPlaybackContext){
         prj,
-        DP_canvas_history_new_no_mutex(),
-        dc,
-        DP_local_state_new(NULL, NULL, NULL),
+        DP_playback_new(dc),
         multi_zstd_make(),
-        DP_malloc(sizeof(*c->multidab_msgs) * (size_t)MAX_MULTIDAB_COUNT),
-        0,
         DP_VECTOR_NULL,
         load_snapshot_fn,
         filter_fn,
@@ -5918,14 +6037,8 @@ static void playback_context_dispose(DP_ProjectPlaybackContext *c)
     playback_context_reset_stmt(c);
     DP_VECTOR_CLEAR_DISPOSE_TYPE(&c->continues, DP_ProjectPlaybackContinue,
                                  playback_continue_dispose);
-    int count = c->multidab_count;
-    for (int i = 0; i < count; ++i) {
-        DP_message_decref(c->multidab_msgs[i]);
-    }
-    DP_free(c->multidab_msgs);
     multi_zstd_dispose(&c->mzc);
-    DP_local_state_free(c->ls);
-    DP_canvas_history_free(c->ch);
+    DP_playback_free(c->pb);
 }
 
 static void playback_context_continue_push_inc(DP_ProjectPlaybackContext *c,
@@ -5965,112 +6078,9 @@ playback_context_continue_take(DP_ProjectPlaybackContext *c,
     }
 }
 
-static void playback_handle_single_dec(DP_ProjectPlaybackContext *c,
-                                       DP_Message *msg)
-{
-    if (!DP_canvas_history_handle(c->ch, c->dc, msg)) {
-        DP_warn("Error playing back project message: %s", DP_error());
-    }
-    DP_message_decref(msg);
-}
-
-static void playback_flush_multidab(DP_ProjectPlaybackContext *c)
-{
-    int count = c->multidab_count;
-    switch (count) {
-    case 0:
-        break;
-    case 1:
-        c->multidab_count = 0;
-        playback_handle_single_dec(c, c->multidab_msgs[0]);
-        break;
-    default:
-        c->multidab_count = 0;
-        DP_canvas_history_handle_multidab_dec(c->ch, c->dc, count,
-                                              c->multidab_msgs);
-        break;
-    }
-}
-
-static void playback_clear_multidab(DP_ProjectPlaybackContext *c)
-{
-    int count = c->multidab_count;
-    c->multidab_count = 0;
-    for (int i = 0; i < count; ++i) {
-        DP_message_decref(c->multidab_msgs[i]);
-    }
-}
-
-static void playback_handle_command(DP_ProjectPlaybackContext *c,
-                                    DP_Message *msg)
-{
-    DP_MessageType type = DP_message_type(msg);
-    if (DP_message_type_is_draw_dabs(type)) {
-        int index = c->multidab_count++;
-        c->multidab_msgs[index] = msg;
-        if (index == MAX_MULTIDAB_COUNT - 1) {
-            playback_flush_multidab(c);
-        }
-    }
-    else {
-        playback_flush_multidab(c);
-        DP_local_state_handle(c->ls, c->dc, msg, false);
-        playback_handle_single_dec(c, msg);
-    }
-}
-
-static void playback_handle_soft_reset(DP_ProjectPlaybackContext *c,
-                                       DP_Message *msg)
-{
-    playback_flush_multidab(c);
-    DP_canvas_history_soft_reset(c->ch, c->dc, DP_message_context_id(msg), NULL,
-                                 0);
-    DP_message_decref(msg);
-}
-
-static void playback_handle_undo_depth(DP_ProjectPlaybackContext *c,
-                                       DP_Message *msg)
-{
-    playback_flush_multidab(c);
-    DP_MsgUndoDepth *mud = DP_message_internal(msg);
-    DP_canvas_history_undo_depth_limit_set(c->ch, c->dc,
-                                           DP_msg_undo_depth_depth(mud));
-    DP_canvas_history_soft_reset(c->ch, c->dc, DP_message_context_id(msg), NULL,
-                                 0);
-    DP_message_decref(msg);
-}
-
-static void playback_handle_local_change(DP_ProjectPlaybackContext *c,
-                                         DP_Message *msg)
-{
-    DP_local_state_handle(c->ls, c->dc, msg, false);
-    DP_message_decref(msg);
-}
-
-static DP_ProjectPlaybackHandleFn playback_get_handle_fn(int type)
-{
-    switch (type) {
-    case DP_MSG_SOFT_RESET:
-        return playback_handle_soft_reset;
-    case DP_MSG_UNDO_DEPTH:
-        return playback_handle_undo_depth;
-    case DP_MSG_LOCAL_CHANGE:
-        return playback_handle_local_change;
-    default:
-        if (DP_message_type_command((DP_MessageType)type)) {
-            return playback_handle_command;
-        }
-        else {
-            DP_warn("Unhandled project message type %d", type);
-            return NULL;
-        }
-    }
-}
-
 static DP_CanvasState *playback_current_canvas(DP_ProjectPlaybackContext *c)
 {
-    return DP_local_state_apply_nodec(
-        c->ls, DP_canvas_history_get_noinc_nolock(c->ch), c->dc);
+    return DP_playback_local_canvas_inc(c->pb);
 }
 
 static bool playback_query_push_continues(DP_Project *prj,
@@ -6095,7 +6105,7 @@ static bool playback_query_push_continues(DP_Project *prj,
     while (ps_exec_step(prj, stmt, &error)) {
         // Reify the canvas state on the first instance we need it.
         if (!cs) {
-            playback_flush_multidab(c);
+            DP_playback_flush_multidab(c->pb);
             cs = playback_current_canvas(c);
         }
         long long snapshot_id = sqlite3_column_int64(stmt, 0);
@@ -6156,12 +6166,12 @@ static int playback_state_step_handle_message(
     if (type < 0) { // Internal message.
         switch (type) {
         case DP_PROJECT_MESSAGE_INTERNAL_TYPE_RESET:
-            DP_canvas_history_reset(c->ch);
+            DP_playback_canvas_history_reset(c->pb);
             break;
         case DP_PROJECT_MESSAGE_INTERNAL_TYPE_RESUMED:
             // The recording was resumed at this point, issue a soft reset to
             // cut off the undo history, since it's not available anymore.
-            DP_canvas_history_soft_reset(c->ch, c->dc, 0u, NULL, NULL);
+            DP_playback_canvas_history_soft_reset(c->pb);
             break;
         default:
             DP_debug("Unhandled internal project message type %d", type);
@@ -6169,17 +6179,18 @@ static int playback_state_step_handle_message(
         }
     }
     else {
-        DP_ProjectPlaybackHandleFn handle_fn = playback_get_handle_fn(type);
+        DP_PlaybackHandleFn handle_fn = DP_playback_get_handle_fn(type);
         if (handle_fn) {
             DP_Message *msg = playback_message_context_deserialize(&mc);
             if (msg) {
-                handle_fn(c, msg);
+                DP_playback_handle_message_dec(c->pb, msg, handle_fn);
             }
             else {
                 DP_warn("Error deserializing project message: %s", DP_error());
             }
         }
         else {
+            DP_warn("Unhandled project message type %d", type);
             playback_message_context_dispose(&mc);
         }
     }
@@ -6354,7 +6365,7 @@ static bool playback_query(DP_ProjectPlaybackContext *c,
         *out_last_sequence_id = c->state.sequence_id;
     }
 
-    playback_flush_multidab(c);
+    DP_playback_flush_multidab(c->pb);
     return step_result != PLAYBACK_STATE_STEP_ERROR;
 }
 
@@ -6540,9 +6551,10 @@ canvas_from_snapshot_playback(DP_ProjectPlaybackContext *c,
         DP_debug("Starting from null canvas");
     }
     else {
-        DP_CanvasState *cs = c->load_snapshot_fn(c->prj, c->dc, snapshot_id);
+        DP_CanvasState *cs = c->load_snapshot_fn(
+            c->prj, DP_playback_draw_context(c->pb), snapshot_id);
         if (cs) {
-            DP_canvas_history_reset_to_state_noinc(c->ch, cs);
+            DP_playback_canvas_history_reset_to_state_noinc(c->pb, cs);
         }
         else {
             return NULL;
@@ -6949,8 +6961,9 @@ static int project_info_overview(DP_Project *prj,
                                  void *user)
 {
     sqlite3_stmt *stmt = ps_prepare_ephemeral(
-        prj, "select session_id, protocol, opened_at, closed_at, thumbnail\n"
-             "from sessions order by session_id");
+        prj,
+        "select session_id, protocol, flags, opened_at, closed_at, thumbnail\n"
+        "from sessions order by session_id");
     if (!stmt) {
         return DP_PROJECT_INFO_ERROR_PREPARE;
     }
@@ -6959,14 +6972,15 @@ static int project_info_overview(DP_Project *prj,
     while (ps_exec_step(prj, stmt, &error)) {
         long long session_id = sqlite3_column_int64(stmt, 0);
         const char *protocol = (const char *)sqlite3_column_text(stmt, 1);
-        double opened_at = sqlite3_column_double(stmt, 2);
-        double closed_at = sqlite3_column_double(stmt, 3);
-        const unsigned char *thumbnail_data = sqlite3_column_blob(stmt, 4);
-        size_t thumbnail_size = (size_t)sqlite3_column_bytes(stmt, 4);
+        unsigned int flags = DP_int_to_uint(sqlite3_column_int(stmt, 2));
+        double opened_at = sqlite3_column_double(stmt, 3);
+        double closed_at = sqlite3_column_double(stmt, 4);
+        const unsigned char *thumbnail_data = sqlite3_column_blob(stmt, 5);
+        size_t thumbnail_size = (size_t)sqlite3_column_bytes(stmt, 5);
         DP_ProjectInfo info = {
             DP_PROJECT_INFO_TYPE_OVERVIEW,
             {.overview = {session_id, protocol, opened_at, closed_at,
-                          thumbnail_data, thumbnail_size}}};
+                          thumbnail_data, thumbnail_size, flags}}};
         callback(user, &info);
     }
     sqlite3_finalize(stmt);
@@ -7228,6 +7242,97 @@ bool DP_project_dump(DP_Project *prj, DP_Output *output)
 }
 
 
+struct DP_ProjectMessageCompressor {
+    DP_ProjectSaveCopyMessagesContext c;
+    long long session_id;
+};
+
+DP_ProjectMessageCompressor *DP_project_message_compressor_new(DP_Project *prj)
+{
+    DP_ASSERT(prj);
+
+    sqlite3_stmt *insert_stmt = ps_prepare_ephemeral(
+        prj, "insert into messages (session_id, sequence_id,\n"
+             "recorded_at, flags, type, context_id, body)\n"
+             "values (?, ?, ?, ?, ?, ? ,?)");
+    if (!insert_stmt) {
+        return NULL;
+    }
+
+    DP_ProjectMessageCompressor *pmc = DP_malloc(sizeof(*pmc));
+    project_save_copy_messages_context_init(&pmc->c, prj, insert_stmt);
+    pmc->session_id = 0LL;
+    return pmc;
+}
+
+void DP_project_message_compressor_free(DP_ProjectMessageCompressor *pmc)
+{
+    if (pmc) {
+        project_save_copy_messages_context_dispose(&pmc->c);
+        sqlite3_finalize(pmc->c.insert_stmt);
+        DP_free(pmc);
+    }
+}
+
+bool DP_project_message_compressor_session_id_set(
+    DP_ProjectMessageCompressor *pmc, long long session_id)
+{
+    DP_ASSERT(pmc);
+    DP_ASSERT(pmc->c.message_count == 0);
+    if (pmc->session_id == session_id) {
+        return true;
+    }
+    else if (ps_bind_int64(pmc->c.prj, pmc->c.insert_stmt, 1, session_id)) {
+        pmc->session_id = session_id;
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+int DP_project_message_compressor_message_record(
+    DP_ProjectMessageCompressor *pmc, double recorded_at, DP_Message *msg,
+    unsigned int flags)
+{
+    DP_ASSERT(pmc);
+    DP_ASSERT(msg);
+
+    DP_Project *prj = pmc->c.prj;
+    long long session_id = prj->session_id;
+    if (session_id == 0LL) {
+        DP_error_set("No open session");
+        return DP_PROJECT_MESSAGE_RECORD_ERROR_NOT_OPEN;
+    }
+
+    if (session_id != pmc->session_id) {
+        DP_error_set(
+            "Compressor session %lld does not match project session %lld",
+            pmc->session_id, session_id);
+        return DP_PROJECT_MESSAGE_RECORD_ERROR_NOT_OPEN;
+    }
+
+    size_t length;
+    if (!DP_message_serialize_body(msg, get_serialize_buffer, prj, &length)) {
+        return DP_PROJECT_MESSAGE_RECORD_ERROR_SERIALIZE;
+    }
+
+    if (!project_save_copy_messages_handle(
+            &pmc->c, ++prj->sequence_id, recorded_at, flags,
+            (int)DP_message_type(msg), DP_message_context_id(msg),
+            prj->serialize_buffer, length)) {
+        return DP_PROJECT_MESSAGE_RECORD_ERROR_WRITE;
+    }
+
+    return 0;
+}
+
+bool DP_project_message_compressor_flush(DP_ProjectMessageCompressor *pmc)
+{
+    return project_save_copy_messages_flush_buffer(&pmc->c);
+}
+
+
 DP_ProjectPlayback *DP_project_playback_new(DP_Project *prj)
 {
     DP_ASSERT(prj);
@@ -7465,10 +7570,13 @@ static void project_playback_update_recorded_at(
             *in_out_total_playback_seconds += DP_min_double(
                 max_delta_seconds, recorded_at - last_recorded_at);
         }
-        else {
+#ifndef NDEBUG
+        else if (!is_infinitesimal_backwards_time(last_recorded_at,
+                                                  recorded_at)) {
             DP_debug("Message recorded time went backwards from %f to %f",
                      last_recorded_at, recorded_at);
         }
+#endif
         *in_out_last_recorded_at = recorded_at;
     }
     else {
@@ -7506,7 +7614,8 @@ static int project_playback_play_filter(void *user,
     if (project_playback_is_timing_relevant(pfc->pb, &pfc->pbc, mc)) {
         double recorded_at = mc->recorded_at;
         if (isfinite(recorded_at)) {
-            if (pfc->last_recorded_at <= recorded_at) {
+            double last_recorded_at = pfc->last_recorded_at;
+            if (last_recorded_at <= recorded_at) {
 
                 double next_playback_seconds =
                     pfc->current_playback_seconds
@@ -7521,19 +7630,24 @@ static int project_playback_play_filter(void *user,
 
                 if (next_frame > current_frame) {
                     DP_ProjectPlaybackContext *c = &pfc->c;
-                    playback_flush_multidab(c);
+                    DP_Playback *pb = c->pb;
+                    DP_playback_flush_multidab(pb);
                     if (!pfc->callback(pfc->user, next_frame - current_frame,
-                                       playback_current_canvas(c), c->ls,
+                                       playback_current_canvas(c),
+                                       DP_playback_local_state(pb),
                                        playback_crop_current(pbc))) {
                         filter_result = FILTER_ABORT;
                     }
                     pfc->current_frame = next_frame;
                 }
             }
-            else {
+#ifndef NDEBUG
+            else if (!is_infinitesimal_backwards_time(last_recorded_at,
+                                                      recorded_at)) {
                 DP_debug("Message recorded time went backwards from %f to %f",
-                         pfc->last_recorded_at, recorded_at);
+                         last_recorded_at, recorded_at);
             }
+#endif
             pfc->last_recorded_at = recorded_at;
         }
         else {
@@ -7592,7 +7706,7 @@ static bool project_playback_start_from_snapshot(DP_ProjectPlaybackContext *c,
     if (snapshot_flags & DP_PROJECT_SNAPSHOT_FLAG_CONTINUATION) {
         DP_CanvasState *cs = playback_context_continue_take(c, snapshot_id);
         if (cs) {
-            DP_canvas_history_reset_to_state_noinc(c->ch, cs);
+            DP_playback_canvas_history_reset_to_state_noinc(c->pb, cs);
         }
         else {
             DP_error_set("Initial snapshot %lld continuation not found",
@@ -7602,13 +7716,13 @@ static bool project_playback_start_from_snapshot(DP_ProjectPlaybackContext *c,
     }
     else if (snapshot_id <= 0LL
              || snapshot_flags & DP_PROJECT_SNAPSHOT_FLAG_NULL_CANVAS) {
-        DP_canvas_history_reset(c->ch);
+        DP_playback_canvas_history_reset(c->pb);
     }
     else {
-        DP_CanvasState *cs =
-            DP_project_canvas_from_snapshot(c->prj, c->dc, snapshot_id);
+        DP_CanvasState *cs = DP_project_canvas_from_snapshot(
+            c->prj, DP_playback_draw_context(c->pb), snapshot_id);
         if (cs) {
-            DP_canvas_history_reset_to_state_noinc(c->ch, cs);
+            DP_playback_canvas_history_reset_to_state_noinc(c->pb, cs);
         }
         else {
             return false;
@@ -7804,7 +7918,7 @@ int DP_project_playback_measure(DP_ProjectPlayback *pb, DP_DrawContext *dc,
             project_playback_measure_canvas_state_from_snapshot,
             project_playback_measure_filter_resize, &mfrc);
         mfrc.pb = pb;
-        mfrc.ch = mfrc.c.ch;
+        mfrc.ch = DP_playback_canvas_history(mfrc.c.pb);
         mfrc.last_session_id = 0LL;
         mfrc.extra_offset_x = 0;
         mfrc.extra_offset_y = 0;
@@ -7820,7 +7934,7 @@ int DP_project_playback_measure(DP_ProjectPlayback *pb, DP_DrawContext *dc,
             project_playback_measure_canvas_state_from_snapshot,
             project_playback_measure_filter_time, &mftc);
         mftc.pb = pb;
-        mftc.ch = mftc.c.ch;
+        mftc.ch = DP_playback_canvas_history(mftc.c.pb);
         mftc.last_recorded_at = 0.0;
         playback_crop_init(&mftc.pbc, pb);
 
@@ -8250,11 +8364,20 @@ DP_CanvasState *DP_project_player_current_canvas_noinc(DP_ProjectPlayer *pp)
     DP_ASSERT(pp);
     DP_ProjectPlaybackContext *c = pp->c;
     if (c) {
-        return DP_canvas_history_get_noinc_nolock(c->ch);
+        return DP_playback_history_canvas_noinc(c->pb);
     }
     else {
         return NULL;
     }
+}
+
+bool DP_project_player_local_state_get_reset(DP_ProjectPlayer *pp,
+                                             bool (*fn)(void *, DP_Message *),
+                                             void *user)
+{
+    DP_ASSERT(pp);
+    DP_ProjectPlaybackContext *c = pp->c;
+    return c && DP_playback_local_state_get_reset(c->pb, fn, user);
 }
 
 
@@ -8295,11 +8418,9 @@ static void project_player_reset(DP_ProjectPlayer *pp)
 {
     DP_ProjectPlaybackContext *c = pp->c;
     if (c) {
-        DP_canvas_history_reset(c->ch);
-        DP_local_state_reset(c->ls);
-        playback_clear_multidab(c);
         c->state.id = DP_PROJECT_PLAYBACK_STATE_NONE;
         playback_context_reset_stmt(c);
+        DP_playback_reset(c->pb);
     }
     else {
         c = DP_malloc(sizeof(*c));
@@ -8562,14 +8683,14 @@ static int project_player_has_snapshot(DP_ProjectPlayer *pp,
 
 static int project_player_take_snapshot(DP_ProjectPlayer *pp)
 {
-    playback_flush_multidab(pp->c);
+    DP_Playback *pb = pp->c->pb;
+    DP_playback_flush_multidab(pb);
 
     DP_Project *prj = pp->prj;
     long long session_id = pp->session_id;
     long long sequence_id = pp->sequence_id;
-    long long snapshot_id = DP_canvas_history_project_player_snapshot(
-        pp->c->ch, prj, pp->c->ls, session_id, sequence_id,
-        pp->last_recorded_at);
+    long long snapshot_id = DP_playback_canvas_history_project_player_snapshot(
+        pb, prj, session_id, sequence_id, pp->last_recorded_at);
     if (snapshot_id < 0LL) {
         return DP_llong_to_int(snapshot_id);
     }
@@ -8737,7 +8858,7 @@ static int project_player_proceed_from_snapshot(
         return proceed_result;
     }
 
-    playback_flush_multidab(pp->c);
+    DP_playback_flush_multidab(pp->c->pb);
     return project_player_control_call(
         pp, params, DP_PROJECT_PLAYER_CONTROL_CALLBACK_UPDATE);
 }
@@ -8815,7 +8936,7 @@ static int project_player_control_step_messages(
         return proceed_result;
     }
 
-    playback_flush_multidab(pp->c);
+    DP_playback_flush_multidab(pp->c->pb);
     return project_player_control_call(
         pp, params, DP_PROJECT_PLAYER_CONTROL_CALLBACK_UPDATE);
 }
@@ -8861,7 +8982,7 @@ static int project_player_control_step_undo_points(
         return proceed_result;
     }
 
-    playback_flush_multidab(pp->c);
+    DP_playback_flush_multidab(pp->c->pb);
     return project_player_control_call(
         pp, params, DP_PROJECT_PLAYER_CONTROL_CALLBACK_UPDATE);
 }
@@ -8997,7 +9118,7 @@ static bool project_player_control_should_proceed_play(
     int play_result = project_player_control_call(
         pp, params, DP_PROJECT_PLAYER_CONTROL_CALLBACK_PLAY);
     if (play_result == DP_PROJECT_PLAYER_PLAY_UPDATE) {
-        playback_flush_multidab(pp->c);
+        DP_playback_flush_multidab(pp->c->pb);
         int update_result = project_player_control_call(
             pp, params, DP_PROJECT_PLAYER_CONTROL_CALLBACK_UPDATE);
         return update_result == 0;
@@ -9028,7 +9149,7 @@ project_player_control_play(DP_ProjectPlayer *pp,
         return proceed_result;
     }
 
-    playback_flush_multidab(pp->c);
+    DP_playback_flush_multidab(pp->c->pb);
     return project_player_control_call(
         pp, params, DP_PROJECT_PLAYER_CONTROL_CALLBACK_UPDATE);
 }

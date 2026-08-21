@@ -388,14 +388,14 @@ void ProjectPlaybackDialog::openRecording(
 	m_basename = basename;
 	updateTitle();
 
-	m_tempFileHolder = new utils::TempFileHolder(new utils::TempFile);
+	m_tempFileHolder = new utils::TempFileHolder(new utils::TempFile, this);
 	if(m_tempFileHolder->setTemporaryPath()) {
 		m_messageBar->setRange(0, 100);
 		m_messageBar->setValue(0);
 		setMessage(tr("Converting recording %1…").arg(basename));
 
 		impex::RecordingConverter *converter = new impex::RecordingConverter(
-			path, m_tempFileHolder->sharedPointer());
+			{path}, m_tempFileHolder->sharedPointer(), false);
 
 		connect(
 			this, &ProjectPlaybackDialog::destroyed, converter,
@@ -590,10 +590,15 @@ void ProjectPlaybackDialog::onProjectPlayerProgressed(
 void ProjectPlaybackDialog::onProjectPlayerUpdated(
 	unsigned int controlId, int playerState,
 	const drawdance::CanvasState &canvasState, double playbackSeconds,
-	long long sessionId, long long sequenceId)
+	long long sessionId, long long sequenceId, bool localStateChanged,
+	const net::MessageList &localStateMsgs)
 {
 	if(controlId == m_controlId) {
 		m_paintEngine->enqueueResetToState(canvasState);
+		if(localStateChanged) {
+			m_paintEngine->receiveMessages(
+				false, localStateMsgs.size(), localStateMsgs.constData());
+		}
 		updatePlayer(playerState, playbackSeconds, sessionId, sequenceId);
 	} else {
 		qWarning(

@@ -159,6 +159,9 @@ extern "C" {
 #endif
 #ifdef __EMSCRIPTEN__
 #	include "libclient/wasmsupport.h"
+#else
+#	include "desktop/dialogs/projecteditdialog.h"
+#	include "desktop/dialogs/choicedialog.h"
 #endif
 #ifdef DP_HAVE_BUILTIN_SERVER
 #	include "libclient/server/builtinserver.h"
@@ -2717,7 +2720,8 @@ void MainWindow::showPermissionDeniedMessage(int feature)
 }
 
 void MainWindow::loadCanvasStateFromFile(
-	const QString &path, QTemporaryFile *tempFile, bool resume)
+	const QString &loadPath, const QString &basename, QTemporaryFile *tempFile,
+	bool resume, bool guessPlayer)
 {
 	QApplication::setOverrideCursor(Qt::WaitCursor);
 	QProgressDialog *progressDialog = new QProgressDialog(this);
@@ -2733,21 +2737,29 @@ void MainWindow::loadCanvasStateFromFile(
 
 	setEnabled(false);
 
-	CanvasLoaderRunnable *loader = new CanvasLoaderRunnable(path, this);
+	CanvasLoaderRunnable *loader =
+		new CanvasLoaderRunnable(loadPath, guessPlayer, this);
 	loader->setAutoDelete(false);
 	connect(
 		loader, &CanvasLoaderRunnable::loadComplete, this,
-		[this, tempFile, resume, loader, progressDialog](
+		[this, basename, tempFile, resume, loader, progressDialog](
 			const QString &error, const QString &detail, qint64 elapsedMsec) {
-			delete tempFile;
 			setEnabled(true);
 			delete progressDialog;
 			QApplication::restoreOverrideCursor();
 
 			const drawdance::CanvasState &canvasState = loader->canvasState();
 			if(canvasState.isNull()) {
-				showErrorMessageWithDetails(error, detail);
+				if(loader->looksLikeRecording()) {
+					loadRecordingFromFile(
+						loader->path(), basename, tempFile,
+						loader->playerFlags());
+				} else {
+					delete tempFile;
+					showErrorMessageWithDetails(error, detail);
+				}
 			} else {
+				delete tempFile;
 				showElapsedStatusMessage(
 					//: %1 is minutes, %2 is seconds, %3 is milliseconds.
 					tr("Canvas loaded in %1:%2.%3"), elapsedMsec);
@@ -2770,6 +2782,61 @@ void MainWindow::loadCanvasStateFromFile(
 		Qt::QueuedConnection);
 
 	QThreadPool::globalInstance()->start(loader);
+}
+
+void MainWindow::loadRecordingFromFile(
+	const QString &loadPath, const QString &basename, QTemporaryFile *tempFile,
+	unsigned int playerFlags)
+{
+	if(playerFlags & DP_LOAD_PLAYER_FLAG_INCOMPATIBLE) {
+		utils::showCritical(
+			this, tr("Incompatible Recording"),
+			tr("This recording is incompatible, it cannot be opened with this "
+			   "version of Drawpile."));
+
+	} else if(playerFlags & DP_LOAD_PLAYER_FLAG_SESSION_TEMPLATE) {
+		m_doc->loadSessionTemplateRecording(loadPath);
+		delete tempFile;
+
+	} else {
+#ifdef __EMSCRIPTEN__
+		showProjectPlaybackDialog(basename, loadPath, tempFile, false);
+#else
+		dialogs::ChoiceDialog *choiceDlg = new dialogs::ChoiceDialog(
+			tr("Open Recording"),
+			tr("What do you want to do with this recording?"),
+			{
+				{1, QIcon::fromTheme(QStringLiteral("document-import")),
+				 tr("Convert"),
+				 tr("Turn this recording into a project (dppr) file. Lets you "
+					"make a timelapse of it afterwards.")},
+				{2, QIcon::fromTheme(QStringLiteral("media-playback-start")),
+				 tr("Play"),
+				 tr("Directly opens this recording to let you play it back.")},
+			},
+			this);
+		choiceDlg->setAttribute(Qt::WA_DeleteOnClose);
+		if(tempFile) {
+			tempFile->setParent(choiceDlg);
+		}
+		connect(
+			choiceDlg, &dialogs::ChoiceDialog::choiceSelected, this,
+			[this, basename, loadPath, tempFile](int id) {
+				if(tempFile) {
+					tempFile->setParent(nullptr);
+				}
+
+				if(id == 1) {
+					showProjectEditDialog()->addInputPaths({loadPath});
+				} else {
+					showProjectPlaybackDialog(
+						basename, loadPath, tempFile, false);
+				}
+			},
+			Qt::DirectConnection);
+		choiceDlg->show();
+#endif
+	}
 }
 
 // clang-format off
@@ -2960,50 +3027,9 @@ void MainWindow::openPath(const QString &path, QTemporaryFile *tempFile)
 		return;
 	}
 
-	QString loadPath = tempFile ? tempFile->fileName() : path;
-
-	constexpr QRegularExpression::PatternOption opt =
-		QRegularExpression::CaseInsensitiveOption;
-	if(QRegularExpression(QStringLiteral("\\Afile://"), opt)
-		   .match(loadPath)
-		   .hasMatch()) {
-		QUrl url = QUrl::fromUserInput(loadPath);
-		if(url.isValid() && url.isLocalFile()) {
-			loadPath = url.toLocalFile();
-		}
-	}
-
-	QString basename = utils::PathInfo(path).basename();
-	if(QRegularExpression(QStringLiteral("\\.dp(rec|txt)$"), opt)
-		   .match(basename)
-		   .hasMatch()) {
-		showProjectPlaybackDialog(basename, loadPath, tempFile, false);
-
-	} else if(
-		QRegularExpression(QStringLiteral("\\.drawdancedump$"), opt)
-			.match(basename)
-			.hasMatch()) {
-		DP_LoadResult result = m_doc->loadRecording(loadPath, true);
-		if(result == DP_LOAD_RESULT_SUCCESS) {
-			m_dumpPlaybackDialog =
-				new dialogs::DumpPlaybackDialog{m_doc->canvas(), this};
-			m_dumpPlaybackDialog->setWindowTitle(
-				QStringLiteral("%1 - %2")
-					.arg(utils::PathInfo::stripExtension(basename))
-					.arg(m_dumpPlaybackDialog->windowTitle()));
-			m_dumpPlaybackDialog->setAttribute(Qt::WA_DeleteOnClose);
-			m_dumpPlaybackDialog->show();
-			if(tempFile) {
-				tempFile->setParent(m_dumpPlaybackDialog);
-			}
-		} else {
-			delete tempFile;
-		}
-
-	} else {
-		loadCanvasStateFromFile(loadPath, tempFile, false);
-	}
-
+	QString basename;
+	QString loadPath = extractLoadPath(path, tempFile, &basename);
+	loadCanvasStateFromFile(loadPath, basename, tempFile, false, true);
 	addRecentFile(path, int(utils::Recents::Source::Open));
 }
 
@@ -3022,19 +3048,89 @@ void MainWindow::openPlaybackPath(const QString &path, QTemporaryFile *tempFile)
 			delete tempFile;
 		} else {
 			createNewWindow([path, tempFile](MainWindow *win) {
-				win->openPath(path, tempFile);
+				win->openPlaybackPath(path, tempFile);
 			});
 		}
 		return;
 	}
 
-	QString basename = utils::PathInfo(path).basename();
-	QString loadPath = tempFile ? tempFile->fileName() : path;
+	QString basename;
+	QString loadPath = extractLoadPath(path, tempFile, &basename);
 	bool looksLikeProject =
 		DP_project_check_path(loadPath.toUtf8().constData()).result !=
 		DP_PROJECT_CHECK_NONE;
 	showProjectPlaybackDialog(basename, loadPath, tempFile, looksLikeProject);
 }
+
+void MainWindow::openDebugDumpPath(
+	const QString &path, QTemporaryFile *tempFile)
+{
+	if(!canReplace()) {
+		prepareWindowReplacement();
+		createNewWindow([path, tempFile](MainWindow *win) {
+			win->openDebugDumpPath(path, tempFile);
+		});
+		return;
+	}
+
+	QString basename;
+	QString loadPath = extractLoadPath(path, tempFile, &basename);
+	DP_LoadResult result = m_doc->loadDebugDump(loadPath);
+	if(result == DP_LOAD_RESULT_SUCCESS) {
+		m_dumpPlaybackDialog =
+			new dialogs::DumpPlaybackDialog{m_doc->canvas(), this};
+		m_dumpPlaybackDialog->setWindowTitle(
+			QStringLiteral("%1 - %2")
+				.arg(utils::PathInfo::stripExtension(basename))
+				.arg(m_dumpPlaybackDialog->windowTitle()));
+		m_dumpPlaybackDialog->setAttribute(Qt::WA_DeleteOnClose);
+		m_dumpPlaybackDialog->show();
+		if(tempFile) {
+			tempFile->setParent(m_dumpPlaybackDialog);
+		}
+	} else {
+		delete tempFile;
+	}
+}
+
+#ifndef __EMSCRIPTEN__
+void MainWindow::convertRecordings()
+{
+	showProjectEditDialog()->promptForInputFiles();
+}
+
+dialogs::ProjectEditDialog *MainWindow::showProjectEditDialog()
+{
+	QString objectName = QStringLiteral("projecteditdialog");
+	dialogs::ProjectEditDialog *dlg = findChild<dialogs::ProjectEditDialog *>(
+		objectName, Qt::FindDirectChildrenOnly);
+	if(dlg) {
+		dlg->activateWindow();
+		dlg->raise();
+	} else {
+		dlg = new dialogs::ProjectEditDialog(this);
+		dlg->setAttribute(Qt::WA_DeleteOnClose);
+		dlg->setObjectName(objectName);
+		connect(
+			dlg, &dialogs::ProjectEditDialog::openOutputFileRequested, this,
+			&MainWindow::openEditedProject);
+		dlg->show();
+	}
+	return dlg;
+}
+
+void MainWindow::openEditedProject(const QString &path)
+{
+	questionWindowReplacement(
+		tr("Open Project"),
+		tr("You're about to open the project file and close this window."),
+		[this, path](bool ok) {
+			if(ok) {
+				openPath(path);
+			}
+		});
+}
+#endif
 
 void MainWindow::showProjectPlaybackDialog(
 	const QString &basename, const QString &loadPath, QTemporaryFile *tempFile,
@@ -3063,7 +3159,7 @@ void MainWindow::showProjectPlaybackDialog(
 
 void MainWindow::resumeAutosave(const QString &path)
 {
-	loadCanvasStateFromFile(path, nullptr, true);
+	loadCanvasStateFromFile(path, QString(), nullptr, true, false);
 }
 
 /**
@@ -3672,18 +3768,41 @@ void MainWindow::showSystemInfo()
 	dlg->raise();
 }
 
-// clang-format off
 void MainWindow::toggleRecording()
 {
 	if(m_projectPlaybackDialog) {
-		return; // Can't record during playback.
+		return; // Can't record during playback or without a canvas.
 	}
 
 	if(m_doc->stopRecording()) {
 		return; // There was a recording and we just stopped it.
 	}
 
-	QString filename = FileWrangler{this}.getSaveRecordingPath();
+	canvas::CanvasModel *canvas = m_doc->canvas();
+	if(!canvas) {
+		return; // Can't record without a canvas.
+	}
+
+	if(canvas->isProjectRecording()) {
+		QMessageBox *box = utils::showQuestion(
+			this, tr("Record"),
+			QStringLiteral("<p>%1</p><p>%2</p>")
+				.arg(
+					tr("You are already recording this session because "
+					   "autorecovery is enabled. If you save to a project "
+					   "file (.dppr), it will save the recording as well.")
+						.toHtmlEscaped(),
+					tr("Do you want to start another recording anyway?")
+						.toHtmlEscaped()));
+		connect(box, &QMessageBox::accepted, this, &MainWindow::startRecording);
+	} else {
+		startRecording();
+	}
+}
+
+void MainWindow::startRecording()
+{
+	QString filename = FileWrangler(this).getSaveRecordingPath();
 	if(!filename.isEmpty()) {
 		drawdance::RecordStartResult result = m_doc->startRecording(filename);
 		switch(result) {
@@ -3693,7 +3812,8 @@ void MainWindow::toggleRecording()
 			showErrorMessage(tr("Unsupported format."));
 			break;
 		case drawdance::RECORD_START_OPEN_ERROR:
-			showErrorMessageWithDetails(tr("Couldn't start recording."), DP_error());
+			showErrorMessageWithDetails(
+				tr("Couldn't start recording."), DP_error());
 			break;
 		default:
 			showErrorMessageWithDetails(tr("Unknown error."), DP_error());
@@ -3702,6 +3822,7 @@ void MainWindow::toggleRecording()
 	}
 }
 
+// clang-format off
 void MainWindow::toggleProfile()
 {
 #ifdef __EMSCRIPTEN__
@@ -6199,7 +6320,7 @@ void MainWindow::openDebugDump()
 		[this](bool ok) {
 			if(ok) {
 				FileWrangler(this).openDebugDump(
-					std::bind(&MainWindow::openPath, this, _1, _2));
+					std::bind(&MainWindow::openDebugDumpPath, this, _1, _2));
 			}
 		});
 }
@@ -6577,6 +6698,11 @@ void MainWindow::setupActions()
 	QAction *importBrushes =
 		makeAction("importbrushes", tr("Import &Brushes..."))
 			.noDefaultShortcut();
+#ifndef __EMSCRIPTEN__
+	QAction *importRecordings =
+		makeAction("importrecordings", tr("Convert &Recordings to Project…"))
+			.noDefaultShortcut();
+#endif
 	QAction *exportBrushes =
 		makeAction("exportbrushes", tr("Export &Brushes…")).noDefaultShortcut();
 
@@ -6683,6 +6809,11 @@ void MainWindow::setupActions()
 	connect(
 		importBrushes, &QAction::triggered, m_dockBrushPalette,
 		&docks::BrushPalette::importBrushes);
+#ifndef __EMSCRIPTEN__
+	connect(
+		importRecordings, &QAction::triggered, this,
+		&MainWindow::convertRecordings);
+#endif
 	connect(
 		exportBrushes, &QAction::triggered, m_dockBrushPalette,
 		&docks::BrushPalette::exportBrushes);
@@ -6751,6 +6882,9 @@ void MainWindow::setupActions()
 #endif
 	importMenu->addAction(importAnimationLayers);
 	importMenu->addAction(importBrushes);
+#ifndef __EMSCRIPTEN__
+	importMenu->addAction(importRecordings);
+#endif
 
 	QMenu *exportMenu = filemenu->addMenu(tr("&Export"));
 	exportMenu->setIcon(QIcon::fromTheme("document-export"));
@@ -9875,4 +10009,21 @@ QString MainWindow::makeContributionInfoText()
 
 	return QStringLiteral("<p%1>%2</p><p%1>%3<br></p>")
 		.arg(attrs, donationText, helpText);
+}
+
+QString MainWindow::extractLoadPath(
+	const QString &path, const QTemporaryFile *tempFile, QString *outBasename)
+{
+	QString loadPath = tempFile ? tempFile->fileName() : path;
+	if(path.startsWith(QStringLiteral("file://"), Qt::CaseInsensitive)) {
+		QUrl url = QUrl::fromUserInput(loadPath);
+		if(url.isValid() && url.isLocalFile()) {
+			loadPath = url.toLocalFile();
+		}
+	}
+
+	if(outBasename) {
+		*outBasename = utils::PathInfo(path).basename();
+	}
+	return loadPath;
 }

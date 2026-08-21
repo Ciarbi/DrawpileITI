@@ -2,6 +2,7 @@
 #ifndef LIBCLIENT_PROJECT_PROJECTWRANGLER_H
 #define LIBCLIENT_PROJECT_PROJECTWRANGLER_H
 #include "libclient/drawdance/canvasstate.h"
+#include "libclient/net/message.h"
 #include <QAtomicInt>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -33,6 +34,7 @@ struct OverviewEntry {
 	QDateTime openedAt;
 	QDateTime closedAt;
 	QString protocol;
+	bool converted = false;
 };
 
 class ProjectWrangler final : public QObject {
@@ -91,7 +93,8 @@ Q_SIGNALS:
 	void playerUpdated(
 		unsigned int controlId, int playerState,
 		const drawdance::CanvasState &canvasState, double playbackSeconds,
-		long long sessionId, long long sequenceId);
+		long long sessionId, long long sequenceId, bool localStateChanged,
+		const net::MessageList &localStateMsgs);
 	void playerControlCompleted(int controlId);
 
 private:
@@ -162,6 +165,8 @@ private:
 
 	static bool
 	overviewEntryLessThan(const OverviewEntry &a, const OverviewEntry &b);
+
+	static bool acceptLocalStateMessage(void *user, DP_Message *msg);
 
 	DP_ProjectWorker *m_pw = nullptr;
 	DP_DrawContext *m_dc = nullptr;

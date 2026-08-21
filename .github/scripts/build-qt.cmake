@@ -258,6 +258,7 @@ if(OPENSSL)
 			AUTOMAKE
 				CONFIGURATOR "Configure"
 				ASSIGN_PREFIX BROKEN_INSTALL NEEDS_VC_WIN_TARGET
+				QUIRKS openssl
 				MAKE_FLAGS ${OPENSSL_MAKE_FLAGS}
 				WIN32_CONFIGURE_COMMAND perl
 				WIN32_MAKE_COMMAND nmake
@@ -377,6 +378,7 @@ if(KRITA_QT)
 				qtbase:patches/androidhuawei-qt5-krita.diff
 				qtbase:patches/androiddebuginput-qt5-krita.diff
 				qtbase:patches/androidbarrelrotation-qt5-krita.diff
+				qtbase:patches/androidinsets.diff
 				TARGET_BITS=64@qtbase:patches/android-16k-alignment-qt5-krita.diff
 				qtwebsockets:patches/qtwebsockets-qt5-krita.diff
 	)

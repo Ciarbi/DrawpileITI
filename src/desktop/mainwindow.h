@@ -68,6 +68,7 @@ namespace dialogs {
 class DumpPlaybackDialog;
 class HostDialog;
 class InputSettingsDialog;
+class ProjectEditDialog;
 class ProjectPlaybackDialog;
 class ProjectRecordingSettingsDialog;
 class ServerLogDialog;
@@ -113,6 +114,8 @@ public:
 	void openPath(const QString &path, QTemporaryFile *tempFile = nullptr);
 	void
 	openPlaybackPath(const QString &path, QTemporaryFile *tempFile = nullptr);
+	void
+	openDebugDumpPath(const QString &path, QTemporaryFile *tempFile = nullptr);
 
 	void resumeAutosave(const QString &path);
 
@@ -307,6 +310,11 @@ private slots:
 	void toggleDebugDump();
 #endif
 	void openDebugDump();
+#ifndef __EMSCRIPTEN__
+	void convertRecordings();
+	dialogs::ProjectEditDialog *showProjectEditDialog();
+	void openEditedProject(const QString &path);
+#endif
 	void showProjectPlaybackDialog(
 		const QString &basename, const QString &loadPath,
 		QTemporaryFile *tempFile, bool looksLikeProject);
@@ -377,7 +385,12 @@ private:
 	void loadBlankDocument(const QSize &size, const QColor &background);
 
 	void loadCanvasStateFromFile(
-		const QString &path, QTemporaryFile *tempFile, bool resume);
+		const QString &loadPath, const QString &basename,
+		QTemporaryFile *tempFile, bool resume, bool guessPlayer);
+
+	void loadRecordingFromFile(
+		const QString &loadPath, const QString &basename,
+		QTemporaryFile *tempFile, unsigned int playerFlags);
 
 	void connectStartDialog(dialogs::StartDialog *dlg);
 	void setStartDialogActions(dialogs::StartDialog *dlg);
@@ -431,6 +444,7 @@ private:
 	void showResetImageTooLargeErrorMessage(int maxSize, bool autoReset);
 	void handleAmbiguousShortcut(QShortcutEvent *shortcutEvent);
 
+	void startRecording();
 	void stopProjectRecording();
 	void toggleProjectRecording(bool enabled);
 	void onProjectRecordingStarted();
@@ -530,6 +544,10 @@ private:
 
 	void setDonationLinkEnabled(bool enabled);
 	QString makeContributionInfoText();
+
+	static QString extractLoadPath(
+		const QString &path, const QTemporaryFile *tempFile,
+		QString *outBasename = nullptr);
 
 	bool m_singleSession;
 	bool m_smallScreenMode;
