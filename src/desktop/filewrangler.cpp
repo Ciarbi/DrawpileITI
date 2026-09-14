@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "desktop/filewrangler.h"
+extern "C" {
+#include <dpengine/project.h>
+}
 #include "cmake-config/config.h"
+#include "desktop/filewrangler.h"
 #include "desktop/main.h"
 #include "desktop/utils/widgetutils.h"
 #include "libclient/canvas/canvasmodel.h"
@@ -8,7 +11,7 @@
 #include "libclient/config/config.h"
 #include "libclient/document.h"
 #include "libclient/import/canvasloaderrunnable.h"
-#include "libclient/utils/pathinfo.h"
+#include "libclient/io/pathinfo.h"
 #include "libclient/utils/scopedoverridecursor.h"
 #include "libshared/util/paths.h"
 #include <QBuffer>
@@ -29,10 +32,6 @@
 #include <dpcommon/platform_qt.h>
 #if defined(Q_OS_ANDROID) || defined(__EMSCRIPTEN__)
 #	include "desktop/dialogs/filetypedialog.h"
-#else
-extern "C" {
-#	include <dpengine/project.h>
-}
 #endif
 
 Q_LOGGING_CATEGORY(lcDpFileWrangler, "net.drawpile.filewrangler", QtWarningMsg)
@@ -193,7 +192,7 @@ QStringList FileWrangler::getProjectEditImportPaths()
 {
 	return showOpenFileListDialogFilters(
 		tr("Recordings"), LastPath::IMAGE,
-		utils::fileFormatFilterList(utils::FileFormatOption::OpenRecordings));
+		utils::openPlaybackFormatFilterList());
 }
 
 QString FileWrangler::getProjectEditExportPath()
@@ -201,6 +200,13 @@ QString FileWrangler::getProjectEditExportPath()
 	return showSaveFileDialogFilters(
 		tr("Save Project"), LastPath::IMAGE, QStringLiteral(".dppr"),
 		utils::saveProjectFormatFilterList());
+}
+
+QString FileWrangler::getRepairOpenPath()
+{
+	return showOpenFileDialogFilters(
+		tr("Repairable Files"), LastPath::IMAGE,
+		utils::openRepairFormatFilterList());
 }
 
 QStringList FileWrangler::getImportCertificatePaths(const QString &title) const
@@ -238,7 +244,9 @@ QString FileWrangler::saveImage(Document *doc, bool exported) const
 	if(path.isEmpty() || type == DP_SAVE_IMAGE_UNKNOWN) {
 		return saveImageAs(doc, exported, DP_SAVE_IMAGE_UNKNOWN, false);
 	} else if(exported || confirmFlatten(doc, path, type)) {
-		doc->saveCanvasAs(path, type, exported, true);
+		doc->saveCanvasAs(
+			path, type, exported, true,
+			canCopyPrevious(path, doc->projectPath(), type));
 		return path;
 	} else {
 		return QString();
@@ -297,13 +305,15 @@ QString FileWrangler::saveImageAs(
 				qCDebug(
 					lcDpFileWrangler, "Saving canvas as '%s'",
 					qUtf8Printable(filename));
-				doc->saveCanvasAs(filename, type, exported, false);
+				doc->saveCanvasAs(
+					filename, type, exported, false,
+					canCopyPrevious(filename, doc->projectPath(), type));
 				return filename;
 			case OverwriteAction::Append:
 				qCDebug(
 					lcDpFileWrangler, "Appending canvas to '%s'",
 					qUtf8Printable(filename));
-				doc->saveCanvasAs(filename, type, exported, true);
+				doc->saveCanvasAs(filename, type, exported, true, false);
 				return filename;
 			}
 		} else {
@@ -326,7 +336,8 @@ QString FileWrangler::savePreResetImageAs(
 	DP_SaveImageType type = guessType(intendedName);
 
 	if(!path.isEmpty() && confirmFlatten(doc, path, type)) {
-		doc->saveCanvasStateAs(path, type, canvasState, false, false, false);
+		doc->saveCanvasStateAs(
+			path, type, canvasState, false, false, false, false);
 		return path;
 	} else {
 		return QString{};
@@ -421,6 +432,13 @@ QString FileWrangler::getSaveAnimationApngPath() const
 	return showSaveFileDialogFilters(
 		tr("Export Animated PNG"), LastPath::IMAGE, ".png",
 		{QStringLiteral("APNG (*.png, *.apng)")});
+}
+
+QString FileWrangler::getSaveAnimationSpritesheetPath() const
+{
+	return showSaveFileDialogFilters(
+		tr("Export PNG Spritesheet"), LastPath::IMAGE, ".png",
+		{QStringLiteral("PNG (*.png)")});
 }
 
 QString FileWrangler::getSavePerformanceProfilePath() const
@@ -520,6 +538,22 @@ QString FileWrangler::getAutosaveExportPath(
 	QString path = showSaveFileDialogFilters(
 		tr("Export Autorecovery File"), LastPath::AUTOSAVE, ext,
 		{QStringLiteral("%1 (*.dppr)").arg(tr("Drawpile Project"))});
+	if(!path.isEmpty()) {
+		updateLastPath(LastPath::IMAGE, path);
+	}
+	return path;
+}
+
+QString FileWrangler::getRepairExportPath(
+	const QString &defaultName, const QString &ext) const
+{
+	updateLastPath(
+		LastPath::REPAIR, QFileInfo(getLastPath(LastPath::IMAGE, ext)).path() +
+							  QDir::separator() + defaultName);
+
+	QString path = showSaveFileDialogFilters(
+		tr("Save Repaired File"), LastPath::REPAIR, ext,
+		{QStringLiteral("%1 (*%2)").arg(tr("Repaired File"), ext)});
 	if(!path.isEmpty()) {
 		updateLastPath(LastPath::IMAGE, path);
 	}
@@ -663,22 +697,14 @@ bool FileWrangler::confirmFlatten(
 FileWrangler::OverwriteAction
 FileWrangler::confirmOverwrite(const QString &path, DP_SaveImageType type) const
 {
-	// On Android, the operating system creates the file for us, so it
-	// will always exist at this point. In practice, it will always be a
-	// new file, because the OS refuses to overwrite files.
-#	ifdef Q_OS_ANDROID
-	Q_UNUSED(path);
-	Q_UNUSED(type);
-	return OverwriteAction::Replace;
-#	else
-	QFileInfo fileInfo(path);
-	if(fileInfo.exists()) {
+	io::PathInfo pathInfo(path);
+	if(pathInfo.hasContent()) {
 		if(canAppend(path, type)) {
 			QMessageBox box(
 				QMessageBox::Question, tr("Replace Project"),
 				tr("The project file %1 already exists. Do you want to append "
 				   "to it or replace it?")
-					.arg(fileInfo.fileName()),
+					.arg(pathInfo.basename()),
 				QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
 				parentWidget());
 			box.setInformativeText(
@@ -700,7 +726,7 @@ FileWrangler::confirmOverwrite(const QString &path, DP_SaveImageType type) const
 			QMessageBox box(
 				QMessageBox::Question, tr("Replace Image"),
 				tr("The file %1 already exists, do you want to replace it?")
-					.arg(fileInfo.fileName()),
+					.arg(pathInfo.basename()),
 				QMessageBox::Yes | QMessageBox::No, parentWidget());
 			box.button(QMessageBox::Yes)->setText(tr("Yes, replace"));
 			box.button(QMessageBox::No)->setText(tr("No, keep"));
@@ -714,10 +740,8 @@ FileWrangler::confirmOverwrite(const QString &path, DP_SaveImageType type) const
 	} else {
 		return OverwriteAction::Replace;
 	}
-#	endif
 }
 
-#	ifndef Q_OS_ANDROID
 bool FileWrangler::canAppend(const QString &path, DP_SaveImageType type) const
 {
 	if(type == DP_SAVE_IMAGE_PROJECT) {
@@ -753,7 +777,22 @@ bool FileWrangler::canAppend(const QString &path, DP_SaveImageType type) const
 		return false;
 	}
 }
-#	endif
+
+bool FileWrangler::canCopyPrevious(
+	const QString &path, const QString &prevPath, DP_SaveImageType type) const
+{
+	if(type == DP_SAVE_IMAGE_PROJECT && !prevPath.isEmpty()) {
+		// With project files it makes sense that if the user saves to a new
+		// file, they want to carry over the entire project, not just the
+		// current session.
+		io::PathInfo prevPathInfo(prevPath);
+		return !prevPathInfo.isSamePath(path) &&
+			   prevPathInfo.looksLikeProjectFile();
+	} else {
+		// Other file types just save the current session anyway.
+		return false;
+	}
+}
 #endif
 
 QString FileWrangler::guessExtension(
@@ -973,7 +1012,7 @@ void FileWrangler::updateLastPath(LastPath type, const QString &path)
 	// file, since paths are weird content URIs that don't interact
 	// with the native Android file picker in any kind of sensible
 	// way.
-	QString basename = utils::PathInfo(path).basename();
+	QString basename = io::PathInfo(path).basename();
 	if(!basename.isEmpty()) {
 		setLastPath(type, basename);
 	}
@@ -1007,6 +1046,8 @@ QString FileWrangler::getLastPathKey(LastPath type)
 		return QStringLiteral("sessionsettings");
 	case LastPath::AUTOSAVE:
 		return QStringLiteral("autosave");
+	case LastPath::REPAIR:
+		return QStringLiteral("repair");
 	}
 	return QStringLiteral("unknown");
 }
@@ -1244,7 +1285,7 @@ void FileWrangler::setLastOpenPath(LastPath type, const QString &path) const
 		// On Android, the last path is really just the name of the last file,
 		// since paths are weird content URIs that don't interact with the
 		// native Android file picker in any kind of sensible way.
-		QString basename = utils::PathInfo(path).basename();
+		QString basename = io::PathInfo(path).basename();
 		if(!basename.isEmpty()) {
 			setLastPath(type, basename);
 		}

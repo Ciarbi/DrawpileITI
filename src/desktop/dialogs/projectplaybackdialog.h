@@ -16,12 +16,12 @@ namespace canvas {
 class PaintEngine;
 }
 
-namespace project {
-class ProjectWrangler;
+namespace io {
+class TempFileHolder;
 }
 
-namespace utils {
-class TempFileHolder;
+namespace project {
+class ProjectWrangler;
 }
 
 namespace widgets {
@@ -45,6 +45,16 @@ public:
 
 	bool isPlaying() const { return m_state == State::Playing; }
 	void setPlaying(bool playing);
+
+	bool isInProgress() const
+	{
+		return m_state != State::NotPrepared && m_state != State::Paused;
+	}
+
+	void setCanvasDirty(bool canvasDirty);
+
+Q_SIGNALS:
+	void stateChanged();
 
 private:
 	class PlaybackSlider;
@@ -70,6 +80,7 @@ private:
 	bool isPaused() const { return m_state == State::Paused; }
 
 	void updateTitle();
+	void updateDirtyWarning();
 
 	void setMessage(const QString &text, const QString &toolTip = QString());
 	void setMessageProgress(int percent);
@@ -90,7 +101,9 @@ private:
 		unsigned int controlId, int playerState,
 		const drawdance::CanvasState &canvasState, double playbackSeconds,
 		long long sessionId, long long sequenceId, bool localStateChanged,
-		const net::MessageList &localStateMsgs);
+		const net::MessageList &localStateMsgs, bool viewStateChanged,
+		QSize viewportSize, QPointF pos, qreal zoom, qreal rotation,
+		bool mirror, bool flip);
 	void updatePlayer(
 		int playerState, double playbackSeconds, long long sessionId,
 		long long sequenceId);
@@ -118,6 +131,9 @@ private:
 	void triggerSeek(double seconds);
 	void triggerCancel();
 
+	void showPage(QWidget *page);
+	void setApplyViewState(bool applyViewState);
+
 	QString formatProgressTime(double seconds) const;
 
 	canvas::PaintEngine *m_paintEngine = nullptr;
@@ -126,7 +142,7 @@ private:
 	QString m_pauseTip;
 	QIcon m_playIcon;
 	QIcon m_pauseIcon;
-	utils::TempFileHolder *m_tempFileHolder = nullptr;
+	io::TempFileHolder *m_tempFileHolder = nullptr;
 	project::ProjectWrangler *m_projectWrangler = nullptr;
 	double m_currentPlaybackSeconds = 0.0;
 	double m_totalPlaybackSeconds = 0.0;
@@ -141,14 +157,19 @@ private:
 	widgets::GroupedToolButton *m_playPauseButton;
 	widgets::GroupedToolButton *m_nextStrokeButton;
 	widgets::GroupedToolButton *m_nextSessionButton;
+	widgets::GroupedToolButton *m_optionsButton;
 	KisSliderSpinBox *m_playbackSpeedSlider;
 	PlaybackSlider *m_progressSlider;
 	QStackedWidget *m_progressStack;
+	QWidget *m_progressIdle;
 	QLabel *m_progressLabel;
+	QLabel *m_dirtyWarning;
 	QWidget *m_progressCancel;
 	State m_state = State::NotPrepared;
 	int m_playerState;
 	unsigned int m_controlId = 0u;
+	bool m_canvasDirty = false;
+	bool m_applyViewState = false;
 };
 
 }

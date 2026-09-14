@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef LIBCLIENT_UTILS_TEMPFILE_H
-#define LIBCLIENT_UTILS_TEMPFILE_H
+#ifndef LIBCLIENT_IO_TEMPFILE_H
+#define LIBCLIENT_IO_TEMPFILE_H
 #include <QObject>
 #include <QSharedPointer>
 #include <QString>
 
-namespace utils {
+namespace io {
 
 class TempFile final {
 	Q_DISABLE_COPY_MOVE(TempFile)
@@ -25,6 +25,8 @@ public:
 	// m_autoRemove is true, it will remove the current path.
 	void setPath(const QString &path);
 
+	void clear() { setPath(QString()); }
+
 	bool autoRemove() const { return m_autoRemove; }
 	void setAutoRemove(bool autoRemove) { m_autoRemove = autoRemove; }
 
@@ -41,6 +43,11 @@ public:
 	TempFileHolder(TempFile *tempFile, QObject *parent = nullptr);
 
 	QSharedPointer<TempFile> &sharedPointer() { return m_tempFile; }
+
+	void setSharedPointer(QSharedPointer<TempFile> &sharedPointer)
+	{
+		m_tempFile = sharedPointer;
+	}
 
 	TempFile *tempFile() const { return m_tempFile.data(); }
 

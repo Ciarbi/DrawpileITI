@@ -10,8 +10,10 @@
 #include "libclient/canvas/blendmodes.h"
 #include "libclient/canvas/canvasmodel.h"
 #include "libclient/canvas/layerlist.h"
+#include "libclient/canvas/paintengine.h"
 #include "libclient/config/config.h"
 #include "libclient/drawdance/eventlog.h"
+#include "libclient/drawdance/viewstate.h"
 #include "libclient/tools/enums.h"
 #include "libclient/utils/cursors.h"
 #include "libclient/view/enums.h"
@@ -497,6 +499,9 @@ void CanvasView::setCanvas(drawingboard::CanvasScene *scene)
 			setBackgroundBrush(bb);
 		});
 	connect(
+		m_scene, &drawingboard::CanvasScene::viewStateSet, this,
+		&CanvasView::setViewState, Qt::DirectConnection);
+	connect(
 		this, &CanvasView::viewRectChange, scene,
 		&drawingboard::CanvasScene::canvasViewportChanged);
 	connect(
@@ -521,6 +526,32 @@ void CanvasView::scrollByF(qreal x, qreal y)
 		m_pos.setX(m_pos.x() + x);
 		m_pos.setY(m_pos.y() + y);
 	});
+}
+
+void CanvasView::setViewState(
+	QSize viewportSize, QPointF pos, qreal zoom, qreal rotation, bool mirror,
+	bool flip)
+{
+	Q_UNUSED(viewportSize);
+
+	if(mirror != m_mirror) {
+		Q_EMIT viewStateMirrorSet(mirror);
+	}
+	if(flip != m_flip) {
+		Q_EMIT viewStateFlipSet(flip);
+	}
+
+	updateCanvasTransform([&] {
+		m_zoom = zoom;
+		m_mirror = mirror;
+		m_flip = flip;
+		m_rotate = toEffectiveRotation(rotation, isRotationInverted());
+	});
+	emitViewTransformed();
+
+	QPointF delta =
+		mapFromCanvas(pos) - mapToScene(viewport()->rect().center());
+	scrollByF(delta.x(), delta.y());
 }
 
 void CanvasView::zoomSteps(int steps)
@@ -709,20 +740,13 @@ void CanvasView::setZoomAt(qreal zoom, const QPointF &point)
 
 void CanvasView::setRotation(qreal angle)
 {
-	angle = std::fmod(angle, 360.0);
-	if(angle < 0.0) {
-		angle += 360.0;
-	}
-
 	bool inverted = isRotationInverted();
-	if(inverted) {
-		angle = 360.0 - angle;
-	}
+	qreal effectiveAngle = toEffectiveRotation(angle, inverted);
 
-	if(angle != m_rotate) {
+	if(effectiveAngle != m_rotate) {
 		QTransform prev, cur;
 		prev.rotate(m_rotate);
-		cur.rotate(angle);
+		cur.rotate(effectiveAngle);
 
 		updateCanvasTransform([&] {
 			if(inverted) {
@@ -730,7 +754,7 @@ void CanvasView::setRotation(qreal angle)
 			} else {
 				m_pos = prev.inverted().map(cur.map(m_pos));
 			}
-			m_rotate = angle;
+			m_rotate = effectiveAngle;
 		});
 
 		emitViewTransformed();
@@ -1097,7 +1121,15 @@ void CanvasView::clearHudHover()
 void CanvasView::viewRectChanged()
 {
 	if(m_scene) {
-		m_scene->setSceneBounds(mapToScene(viewport()->rect()).boundingRect());
+		QWidget *vp = viewport();
+		m_scene->setSceneBounds(mapToScene(vp->rect()).boundingRect());
+		canvas::CanvasModel *canvas = m_scene->model();
+		if(canvas) {
+			canvas->paintEngine()->setViewState(
+				drawdance::ViewState(
+					vp->size(), viewCenterPointF(), m_zoom, rotation(),
+					m_mirror, m_flip));
+		}
 	}
 	emit viewRectChange(mapToCanvas(rect()));
 }
@@ -1575,7 +1607,8 @@ void CanvasView::penMoveEvent(
 			} else {
 				emit penHover(
 					point, m_rotate, m_zoom / devicePixelRatioF(), m_mirror,
-					m_flip, match.toolConstraint1(), match.toolConstraint2());
+					m_flip, match.toolConstraint1(), match.toolConstraint2(),
+					pos);
 				if(m_pointertracking && m_scene->hasImage()) {
 					emit pointerMoved(point);
 				}
@@ -2502,13 +2535,23 @@ void CanvasView::updateCursorPos(const QPoint &pos)
 
 QPoint CanvasView::viewCenterPoint() const
 {
-	return mapToCanvas(rect().center()).toPoint();
+	return viewCenterPointF().toPoint();
+}
+
+QPointF CanvasView::viewCenterPointF() const
+{
+	return mapToCanvas(viewport()->rect().center());
 }
 
 bool CanvasView::isPointVisible(const QPointF &point) const
 {
 	return mapToCanvas(viewport()->rect())
 		.containsPoint(point, Qt::OddEvenFill);
+}
+
+QRectF CanvasView::screenRect() const
+{
+	return mapToCanvas(viewport()->rect()).boundingRect();
 }
 
 void CanvasView::scrollTo(const QPointF &point)
@@ -2838,6 +2881,20 @@ QTransform CanvasView::calculateCanvasTransformFrom(
 void CanvasView::mirrorFlip(QTransform &matrix, bool mirror, bool flip)
 {
 	matrix.scale(mirror ? -1.0 : 1.0, flip ? -1.0 : 1.0);
+}
+
+qreal CanvasView::toEffectiveRotation(const qreal degrees, bool inverted)
+{
+	qreal n = std::fmod(degrees, 360.0);
+	if(n < 0.0) {
+		n += 360.0;
+	}
+
+	if(inverted) {
+		return 360.0 - n;
+	} else {
+		return n;
+	}
 }
 
 void CanvasView::emitViewTransformed()

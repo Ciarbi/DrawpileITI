@@ -22,6 +22,9 @@
 #include "libclient/tools/toolcontroller.h"
 #include <QAction>
 #include <functional>
+#ifdef DP_HAVE_ACTIVITYBROADCAST
+#	include "libclient/io/activitybroadcast.h"
+#endif
 
 using std::placeholders::_6;
 
@@ -91,7 +94,7 @@ bool SceneWrapper::isPointVisible(const QPointF &point) const
 
 QRectF SceneWrapper::screenRect() const
 {
-	return m_view->mapToCanvas(m_view->rect()).boundingRect();
+	return m_view->screenRect();
 }
 
 canvas::CanvasModel *SceneWrapper::canvas() const
@@ -300,7 +303,49 @@ void SceneWrapper::connectActions(const Actions &actions)
 	connect(
 		actions.evadeusercursors, &QAction::toggled, m_scene,
 		&drawingboard::CanvasScene::setEvadeUserCursors);
+	connect(
+		m_view, &CanvasView::viewStateMirrorSet, actions.viewmirror,
+		&QAction::setChecked);
+	connect(
+		m_view, &CanvasView::viewStateFlipSet, actions.viewflip,
+		&QAction::setChecked);
 }
+
+#ifdef DP_HAVE_ACTIVITYBROADCAST
+void SceneWrapper::connectActivityBroadcast(
+	io::ActivityBroadcast *activityBroadcast)
+{
+	connect(
+		m_view, &CanvasView::penDown, activityBroadcast,
+		[this, activityBroadcast](
+			long long, const QPointF &, qreal pressure, qreal xtilt,
+			qreal ytilt, qreal rotation, bool, qreal, qreal, bool, bool, bool,
+			bool, const QPointF &viewPos) {
+			activityBroadcast->sendPenDown(
+				viewPos, m_view->viewArea(), pressure, xtilt, ytilt, rotation);
+		});
+	connect(
+		m_view, &CanvasView::penMove, activityBroadcast,
+		[this, activityBroadcast](
+			long long, const QPointF &, qreal pressure, qreal xtilt,
+			qreal ytilt, qreal rotation, bool, bool, const QPointF &viewPos) {
+			activityBroadcast->sendPenMove(
+				viewPos, m_view->viewArea(), pressure, xtilt, ytilt, rotation);
+		});
+	connect(
+		m_view, &CanvasView::penHover, activityBroadcast,
+		[this, activityBroadcast](
+			const QPointF &, qreal, qreal, bool, bool, bool, bool,
+			const QPointF &viewPos) {
+			activityBroadcast->sendPenHover(viewPos, m_view->viewArea());
+		});
+	connect(
+		m_view, &CanvasView::penUp, activityBroadcast,
+		[this, activityBroadcast]() {
+			activityBroadcast->sendPenUp(m_view->viewArea());
+		});
+}
+#endif
 
 void SceneWrapper::connectCanvasFrame(widgets::CanvasFrame *canvasFrame)
 {

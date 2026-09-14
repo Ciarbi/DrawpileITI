@@ -99,6 +99,12 @@ target_sources(dpclient PRIVATE
 	drawdance/perf.h
 	drawdance/pixels.cpp
 	drawdance/pixels.h
+	drawdance/playback.cpp
+	drawdance/playback.h
+	drawdance/player.cpp
+	drawdance/player.h
+	drawdance/project.cpp
+	drawdance/project.h
 	drawdance/selection.cpp
 	drawdance/selection.h
 	drawdance/selectionset.cpp
@@ -115,6 +121,7 @@ target_sources(dpclient PRIVATE
 	drawdance/track.h
 	drawdance/viewmode.cpp
 	drawdance/viewmode.h
+	drawdance/viewstate.h
 	drawdance/ziparchive.cpp
 	drawdance/ziparchive.h
 	export/animationsaverrunnable.cpp
@@ -136,6 +143,12 @@ target_sources(dpclient PRIVATE
 	import/loadresult.h
 	import/recordingconverter.cpp
 	import/recordingconverter.h
+	io/files.cpp
+	io/files.h
+	io/pathinfo.cpp
+	io/pathinfo.h
+	io/tempfile.cpp
+	io/tempfile.h
 	net/announcementlist.cpp
 	net/announcementlist.h
 	net/authlistmodel.cpp
@@ -160,6 +173,8 @@ target_sources(dpclient PRIVATE
 	project/metadata.h
 	project/projectrecorder.cpp
 	project/projectrecorder.h
+	project/projectwrangler.cpp
+	project/projectwrangler.h
 	project/recoverymodel.cpp
 	project/recoverymodel.h
 	project/resume.cpp
@@ -208,6 +223,8 @@ target_sources(dpclient PRIVATE
 	tools/zoom.h
 	utils/annotations.cpp
 	utils/annotations.h
+	utils/asynctaskrunnable.cpp
+	utils/asynctaskrunnable.h
 	utils/avatarlistmodel.cpp
 	utils/avatarlistmodel.h
 	utils/avatarlistmodeldelegate.h
@@ -254,8 +271,6 @@ target_sources(dpclient PRIVATE
 	utils/listservermodel.h
 	utils/logging.cpp
 	utils/logging.h
-	utils/pathinfo.cpp
-	utils/pathinfo.h
 	utils/qtguicompat.cpp
 	utils/qtguicompat.h
 	utils/scopedoverridecursor.h
@@ -273,8 +288,6 @@ target_sources(dpclient PRIVATE
 	utils/statedatabase.h
 	utils/strings.cpp
 	utils/strings.h
-	utils/tempfile.cpp
-	utils/tempfile.h
 	utils/transformquad.h
 	utils/usernamevalidator.cpp
 	utils/usernamevalidator.h
@@ -317,8 +330,8 @@ if(EMSCRIPTEN)
 	)
 else()
 	target_sources(dpclient PRIVATE
-		project/projectwrangler.cpp
-		project/projectwrangler.h
+		project/projectrepair.cpp
+		project/projectrepair.h
 		utils/news.cpp
 		utils/news.h
 	)
@@ -350,6 +363,14 @@ if(HAVE_TCPSOCKETS)
 			server/builtinserver.h
 		)
 	endif()
+endif()
+
+if(HAVE_UDPSOCKETS)
+	target_compile_definitions(dpclient PUBLIC DP_HAVE_ACTIVITYBROADCAST=1)
+	target_sources(dpclient PRIVATE
+		io/activitybroadcast.cpp
+		io/activitybroadcast.h
+	)
 endif()
 
 # https://gitlab.kitware.com/cmake/cmake/-/issues/19813

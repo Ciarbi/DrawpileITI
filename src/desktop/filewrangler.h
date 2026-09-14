@@ -63,6 +63,7 @@ public:
 		LOG_FILE,
 		SESSION_SETTINGS,
 		AUTOSAVE,
+		REPAIR,
 	};
 
 	FileWrangler(QWidget *parent);
@@ -100,6 +101,7 @@ public:
 #ifndef __EMSCRIPTEN_
 	QStringList getProjectEditImportPaths();
 	QString getProjectEditExportPath();
+	QString getRepairOpenPath();
 
 	// The browser handles our certificates in Emscripten.
 	QStringList getImportCertificatePaths(const QString &title) const;
@@ -121,6 +123,7 @@ public:
 	QString getSaveAnimationWebmPath() const;
 	QString getSaveAnimationWebpPath() const;
 	QString getSaveAnimationApngPath() const;
+	QString getSaveAnimationSpritesheetPath() const;
 	QString getSavePerformanceProfilePath() const;
 	QString getSaveTabletEventLogPath() const;
 
@@ -134,6 +137,8 @@ public:
 #else
 	QString getAutosaveExportPath(
 		const QString &defaultDirectory, const QString &defaultName) const;
+	QString
+	getRepairExportPath(const QString &defaultName, const QString &ext) const;
 #endif
 
 	void saveBrushPack(const PathSaveFn &onSave) const;
@@ -154,9 +159,10 @@ private:
 	OverwriteAction
 	confirmOverwrite(const QString &path, DP_SaveImageType type) const;
 
-#	ifndef Q_OS_ANDROID
 	bool canAppend(const QString &path, DP_SaveImageType type) const;
-#	endif
+	bool canCopyPrevious(
+		const QString &path, const QString &prevPath,
+		DP_SaveImageType type) const;
 #endif
 
 	static QString

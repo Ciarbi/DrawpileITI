@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "libclient/utils/pathinfo.h"
+extern "C" {
+#include <dpengine/project.h>
+}
+#include "libclient/io/pathinfo.h"
+#include <QFile>
 #ifdef Q_OS_ANDROID
 #	include "libclient/utils/androidutils.h"
 #endif
 
-namespace utils {
+namespace io {
 
 PathInfo::PathInfo(const QString &path)
 	: m_path(path)
@@ -77,6 +81,23 @@ QString PathInfo::extractExtension(const QString &s)
 	} else {
 		return QString();
 	}
+}
+
+bool PathInfo::hasContent() const
+{
+	return type() != TYPE_EMPTY && QFile(m_path).size() > 0;
+}
+
+bool PathInfo::isSamePath(const QString &path) const
+{
+	return path == m_path || QFileInfo(path) == fileInfo();
+}
+
+bool PathInfo::looksLikeProjectFile() const
+{
+	return type() != TYPE_EMPTY &&
+		   DP_project_check_path(m_path.toUtf8().constData()).result ==
+			   DP_PROJECT_CHECK_PROJECT;
 }
 
 void PathInfo::initFlags()

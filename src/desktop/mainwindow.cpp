@@ -91,6 +91,8 @@ extern "C" {
 #include "libclient/export/animationsaverrunnable.h"
 #include "libclient/import/canvasloaderrunnable.h"
 #include "libclient/import/loadresult.h"
+#include "libclient/io/files.h"
+#include "libclient/io/pathinfo.h"
 #include "libclient/net/client.h"
 #include "libclient/net/login.h"
 #include "libclient/parentalcontrols/parentalcontrols.h"
@@ -98,10 +100,10 @@ extern "C" {
 #include "libclient/utils/customshortcutmodel.h"
 #include "libclient/utils/images.h"
 #include "libclient/utils/logging.h"
-#include "libclient/utils/pathinfo.h"
 #include "libclient/utils/scopedoverridecursor.h"
 #include "libclient/utils/selectionalteration.h"
 #include "libclient/utils/shortcutdetector.h"
+#include "libclient/utils/strings.h"
 #include "libclient/utils/wasmpersistence.h"
 #include "libclient/view/enums.h"
 #include "libshared/net/netutils.h"
@@ -154,6 +156,9 @@ extern "C" {
 #ifdef DRAWPILE_TIMELAPSE_DIALOG
 #	include "desktop/dialogs/timelapsedialog.h"
 #endif
+#ifdef DRAWPILE_REPAIR_DIALOG
+#	include "desktop/dialogs/projectrepairdialog.h"
+#endif
 #ifdef Q_OS_WIN
 #	include "desktop/bundled/kis_tablet/kis_tablet_support_win.h"
 #endif
@@ -165,6 +170,10 @@ extern "C" {
 #endif
 #ifdef DP_HAVE_BUILTIN_SERVER
 #	include "libclient/server/builtinserver.h"
+#endif
+#if DP_HAVE_ACTIVITYBROADCAST
+#	include "desktop/dialogs/activitybroadcastdialog.h"
+#	include "libclient/io/activitybroadcast.h"
 #endif
 #ifdef Q_OS_MACOS
 static constexpr auto CTRL_KEY = Qt::META;
@@ -1169,7 +1178,7 @@ void MainWindow::updateTitle()
 {
 	QString name;
 	if(m_doc->haveCurrentPath()) {
-		name = utils::PathInfo(m_doc->currentPath()).basenameWithoutExtension();
+		name = io::PathInfo(m_doc->currentPath()).basenameWithoutExtension();
 	} else {
 		name = tr("Untitled");
 	}
@@ -1227,7 +1236,7 @@ void MainWindow::updateExportPath(const QString &path)
 		action->setEnabled(false);
 	} else {
 		action->setText(
-			tr("Export Again to %1").arg(utils::PathInfo(path).basename()));
+			tr("Export Again to %1").arg(io::PathInfo(path).basename()));
 		action->setEnabled(!path.isEmpty() && !m_doc->isSaveInProgress());
 	}
 }
@@ -1922,7 +1931,7 @@ void MainWindow::showProjectRecordingSizeLimitWarning(
 		   "Autorecovery will be disabled if the limit is reached.")
 			.arg(
 				QString::number(percent),
-				utils::paths::formatFileSize(qint64(sizeLimitInBytes))));
+				strings::formatFileSize(qint64(sizeLimitInBytes))));
 }
 
 void MainWindow::showProjectRecordingError(const QString &message)
@@ -2053,6 +2062,29 @@ void MainWindow::requestTimelapseDialog()
 			utils::showWindow(dlg);
 		}
 	}
+}
+#endif
+
+#ifdef DRAWPILE_REPAIR_DIALOG
+void MainWindow::repairProject()
+{
+	QString path = FileWrangler(getStartDialogOrThis()).getRepairOpenPath();
+	if(!path.isEmpty()) {
+		repairProjectPath(path);
+	}
+}
+
+void MainWindow::repairProjectPath(const QString &path)
+{
+	dialogs::ProjectRepairDialog *dlg =
+		new dialogs::ProjectRepairDialog(path, getStartDialogOrThis());
+	dlg->setAttribute(Qt::WA_DeleteOnClose);
+	connect(
+		dlg, &dialogs::ProjectRepairDialog::openRequested, this,
+		[this](const QString &pathToOpen) {
+			openPath(pathToOpen);
+		});
+	dlg->show();
 }
 #endif
 
@@ -2756,6 +2788,24 @@ void MainWindow::loadCanvasStateFromFile(
 						loader->playerFlags());
 				} else {
 					delete tempFile;
+#ifdef DRAWPILE_REPAIR_DIALOG
+					if(loader->result() == DP_LOAD_RESULT_CORRUPTED) {
+						QMessageBox *box = utils::makeMessage(
+							this, tr("Error"), error,
+							//: "It" refers to a corrupted file.
+							tr("It may be possible to repair it."),
+							QMessageBox::Warning,
+							QMessageBox::Ok | QMessageBox::Cancel);
+						box->button(QMessageBox::Ok)->setText(tr("Repair"));
+						connect(
+							box, &QMessageBox::accepted, this,
+							std::bind(
+								&MainWindow::repairProjectPath, this,
+								loader->path()));
+						box->show();
+						return;
+					}
+#endif
 					showErrorMessageWithDetails(error, detail);
 				}
 			} else {
@@ -2767,8 +2817,8 @@ void MainWindow::loadCanvasStateFromFile(
 				if(resume) {
 					long long resumeSessionId = loader->resumeSessionId();
 					m_doc->resumeState(
-						canvasState, loader->path(), autoRecord,
-						resumeSessionId);
+						canvasState, loader->viewState(), loader->path(),
+						autoRecord, resumeSessionId);
 				} else {
 					m_doc->loadState(
 						canvasState, loader->path(), loader->type(), false,
@@ -2854,6 +2904,9 @@ void MainWindow::connectStartDialog(dialogs::StartDialog *dlg)
 	utils::Connections *connections = new utils::Connections(key, dlg);
 	connections->add(connect(dlg, &dialogs::StartDialog::openFile, this, &MainWindow::open));
 	connections->add(connect(dlg, &dialogs::StartDialog::openRecent, this, std::bind(&MainWindow::openRecent, this, _1, nullptr)));
+#ifdef DRAWPILE_REPAIR_DIALOG
+	connections->add(connect(dlg, &dialogs::StartDialog::repairRecovery, this, &MainWindow::repairProjectPath));
+#endif
 	connections->add(connect(dlg, &dialogs::StartDialog::openRecovery, this, &MainWindow::openRecovery));
 	connections->add(connect(dlg, &dialogs::StartDialog::layouts, this, &MainWindow::showLayoutsDialog));
 	connections->add(connect(dlg, &dialogs::StartDialog::preferences, this, &MainWindow::showSettings));
@@ -3081,7 +3134,7 @@ void MainWindow::openDebugDumpPath(
 			new dialogs::DumpPlaybackDialog{m_doc->canvas(), this};
 		m_dumpPlaybackDialog->setWindowTitle(
 			QStringLiteral("%1 - %2")
-				.arg(utils::PathInfo::stripExtension(basename))
+				.arg(io::PathInfo::stripExtension(basename))
 				.arg(m_dumpPlaybackDialog->windowTitle()));
 		m_dumpPlaybackDialog->setAttribute(Qt::WA_DeleteOnClose);
 		m_dumpPlaybackDialog->show();
@@ -3136,8 +3189,10 @@ void MainWindow::showProjectPlaybackDialog(
 	const QString &basename, const QString &loadPath, QTemporaryFile *tempFile,
 	bool looksLikeProject)
 {
+#ifndef __EMSCRIPTEN__
 	QAction *recordAction = getAction("recordsession");
 	recordAction->setEnabled(false);
+#endif
 
 	m_doc->initCanvas(true);
 	m_projectPlaybackDialog = new dialogs::ProjectPlaybackDialog(this);
@@ -3153,8 +3208,38 @@ void MainWindow::showProjectPlaybackDialog(
 	utils::centerOnParent(m_projectPlaybackDialog);
 
 	connect(
+		m_doc, &Document::dirtyCanvas, m_projectPlaybackDialog,
+		&dialogs::ProjectPlaybackDialog::setCanvasDirty);
+	connect(
+		m_projectPlaybackDialog, &dialogs::ProjectPlaybackDialog::stateChanged,
+		this,
+		[this] {
+			if(m_projectPlaybackDialog &&
+			   m_projectPlaybackDialog->isInProgress()) {
+				m_projectPlaybackDialog->setCanvasDirty(false);
+				canvas::CanvasModel *canvas = m_doc->canvas();
+				if(canvas) {
+					canvas->setDirty(false);
+				}
+			}
+			triggerUpdateLockState();
+		},
+		Qt::DirectConnection);
+	connect(
 		m_projectPlaybackDialog, &dialogs::ProjectPlaybackDialog::destroyed,
-		recordAction, std::bind(&QAction::setEnabled, recordAction, true));
+		[=] {
+#ifndef __EMSCRIPTEN__
+			recordAction->setEnabled(true);
+#endif
+			canvas::CanvasModel *canvas = m_doc->canvas();
+			if(canvas) {
+				config::Config *cfg = dpAppConfig();
+				if(cfg->getAutoRecordHost() && !m_doc->isProjectRecording()) {
+					canvas->startProjectRecording(cfg, DP_PROJECT_SOURCE_FILE);
+				}
+				canvas->setDirty(true);
+			}
+		});
 }
 
 void MainWindow::resumeAutosave(const QString &path)
@@ -3452,13 +3537,28 @@ void MainWindow::offerDownload(
 						tr("Error performing download."), tr("File is empty."));
 				} else {
 					FileWrangler(this).saveFileContent(defaultName, bytes);
-					if(m_reconnectAfterSave) {
-						reconnectWith(true);
-					}
+					finishDownload();
 				}
 			});
 		utils::showMessageBox(msgbox);
 	}
+}
+
+void MainWindow::finishDownload()
+{
+	QMessageBox *msgbox = utils::makeInformation(
+		this, tr("Download"),
+		tr("You should have been prompted to save the file. Please wait at "
+		   "least 30 seconds before closing this tab, otherwise some browsers "
+		   "will leave you with an empty file!"),
+		tr("You can check the file size in your operating system. If it is not "
+		   "zero, it should be done saving."));
+	connect(msgbox, &QMessageBox::accepted, this, [this] {
+		if(m_reconnectAfterSave) {
+			reconnectWith(true);
+		}
+	});
+	utils::showMessageBox(msgbox);
 }
 #endif
 
@@ -5059,6 +5159,10 @@ void MainWindow::updateLockState()
 		reasons.setReason(Reason::Tool);
 	}
 
+	if(m_projectPlaybackDialog && m_projectPlaybackDialog->isInProgress()) {
+		reasons.setReason(Reason::Playback);
+	}
+
 	if(m_viewLock->updateReasons(
 		   reasons.activeReasons, reasons.allReasons,
 		   int(canvas ? canvas->paintEngine()->viewMode()
@@ -5920,12 +6024,12 @@ void MainWindow::dropUrl(const QUrl &url)
 {
 	if(url.isLocalFile()) {
 		QString path = url.toLocalFile();
-		QString suffix = utils::PathInfo(path).extension();
+		QString suffix = io::PathInfo(path).extension();
 		if(suffix.compare(QStringLiteral("zip"), Qt::CaseInsensitive) == 0) {
 			m_dockBrushPalette->importBrushesFrom(path);
 		} else if(
 			m_canvasView->canvas() &&
-			!utils::paths::looksLikeCanvasReplacingSuffix(suffix)) {
+			!io::looksLikeCanvasReplacingSuffix(suffix)) {
 			pasteFilePath(path);
 		} else {
 			questionOpenFileWindowReplacement([this, path](bool ok) {
@@ -6712,13 +6816,23 @@ void MainWindow::setupActions()
 						  .noDefaultShortcut();
 #endif
 #ifdef DRAWPILE_TIMELAPSE_DIALOG
-	QAction *makeTimelapse =
-		makeAction("maketimelapse", tr("Make timelapse…")).noDefaultShortcut();
+	QAction *makeTimelapse = makeAction("maketimelapse", tr("Make timelapse…"))
+								 .icon(QStringLiteral("kdenlive-show-video"))
+								 .noDefaultShortcut();
 #endif
 #ifdef DRAWPILE_PROJECT_DIALOG
 	QAction *projectOverview =
 		makeAction("projectoverview", tr("Project statistics…"))
 			.noDefaultShortcut();
+#endif
+#ifndef __EMSCRIPTEN__
+	QAction *editProjects =
+		makeAction("editprojects", tr("Merge/split projects…"))
+			.noDefaultShortcut();
+#endif
+#ifdef DRAWPILE_REPAIR_DIALOG
+	QAction *repairFile =
+		makeAction("repairfile", tr("Repair file…")).noDefaultShortcut();
 #endif
 	QAction *start = makeAction("start", tr("Start...")).noDefaultShortcut();
 	QAction *recover = makeAction("recover", tr("Recover…"))
@@ -6827,6 +6941,14 @@ void MainWindow::setupActions()
 		projectOverview, &QAction::triggered, this,
 		&MainWindow::requestProjectOverview);
 #endif
+#ifndef __EMSCRIPTEN__
+	connect(
+		editProjects, &QAction::triggered, this,
+		&MainWindow::showProjectEditDialog);
+#endif
+#ifdef DRAWPILE_REPAIR_DIALOG
+	connect(repairFile, &QAction::triggered, this, &MainWindow::repairProject);
+#endif
 	connect(start, &QAction::triggered, this, &MainWindow::start);
 	connect(recover, &QAction::triggered, this, &MainWindow::showRecover);
 
@@ -6899,14 +7021,21 @@ void MainWindow::setupActions()
 #endif
 	filemenu->addAction(autoRecord);
 	filemenu->addAction(autoRecordSettings);
-#if defined(DRAWPILE_PROJECT_DIALOG) || defined(DRAWPILE_TIMELAPSE_DIALOG)
+#if defined(DRAWPILE_PROJECT_DIALOG) || defined(DRAWPILE_TIMELAPSE_DIALOG) ||  \
+	defined(DRAWPILE_REPAIR_DIALOG)
 	filemenu->addSeparator();
+#endif
+#ifdef DRAWPILE_TIMELAPSE_DIALOG
+	filemenu->addAction(makeTimelapse);
 #endif
 #ifdef DRAWPILE_PROJECT_DIALOG
 	filemenu->addAction(projectOverview);
 #endif
-#ifdef DRAWPILE_TIMELAPSE_DIALOG
-	filemenu->addAction(makeTimelapse);
+#ifndef __EMSCRIPTEN__
+	filemenu->addAction(editProjects);
+#endif
+#ifdef DRAWPILE_REPAIR_DIALOG
+	filemenu->addAction(repairFile);
 #endif
 	filemenu->addSeparator();
 	filemenu->addAction(start);
@@ -8611,6 +8740,12 @@ void MainWindow::setupActions()
 			.checkable()
 			.noDefaultShortcut();
 #endif
+#ifdef DP_HAVE_ACTIVITYBROADCAST
+	QAction *activityBroadcast =
+		// "UDP" is a technical term, don't attempt to translate it.
+		makeAction("activitybroadcast", tr("UDP Activity Stream…"))
+			.noDefaultShortcut();
+#endif
 	// clang-format off
 	QAction *showNetStats = makeAction("shownetstats", tr("Statistics…")).noDefaultShortcut();
 	devtoolsmenu->addAction(systeminfo);
@@ -8627,6 +8762,9 @@ void MainWindow::setupActions()
 	devtoolsmenu->addAction(inputDebug);
 #ifdef Q_OS_ANDROID
 	devtoolsmenu->addAction(androidTextDebug);
+#endif
+#ifdef DP_HAVE_ACTIVITYBROADCAST
+	devtoolsmenu->addAction(activityBroadcast);
 #endif
 	devtoolsmenu->addAction(showNetStats);
 	// clang-format off
@@ -8654,6 +8792,11 @@ void MainWindow::setupActions()
 			qunsetenv("KRITA_ANDROID_EDIT_TEXT_DEBUG_DRAW");
 		}
 	});
+#endif
+#ifdef DP_HAVE_ACTIVITYBROADCAST
+	connect(
+		activityBroadcast, &QAction::triggered, this,
+		&MainWindow::showActivityBroadcastDialog);
 #endif
 	// clang-format off
 	connect(showNetStats, &QAction::triggered, m_netstatus, &widgets::NetStatus::showNetStats);
@@ -9275,6 +9418,9 @@ void MainWindow::setupHud()
 		getAction(QStringLiteral("fillfgarea")),
 		getAction(QStringLiteral("recolorarea")),
 		getAction(QStringLiteral("selectcrop")),
+#ifdef DRAWPILE_TIMELAPSE_DIALOG
+		getAction(QStringLiteral("maketimelapse")),
+#endif
 		nullptr,
 		getAction(QStringLiteral("showselectionmask")),
 		getAction(QStringLiteral("editselection")),
@@ -10011,6 +10157,62 @@ QString MainWindow::makeContributionInfoText()
 		.arg(attrs, donationText, helpText);
 }
 
+#ifdef DP_HAVE_ACTIVITYBROADCAST
+void MainWindow::showActivityBroadcastDialog()
+{
+	QString objectName = QStringLiteral("activitybroadcastdialog");
+	dialogs::ActivityBroadcastDialog *dlg =
+		findChild<dialogs::ActivityBroadcastDialog *>(
+			objectName, Qt::FindDirectChildrenOnly);
+	if(dlg) {
+		dlg->activateWindow();
+		dlg->raise();
+	} else {
+		dlg = new dialogs::ActivityBroadcastDialog(this);
+		dlg->setObjectName(objectName);
+		dlg->setAttribute(Qt::WA_DeleteOnClose);
+
+		connect(
+			dlg, &dialogs::ActivityBroadcastDialog::activityBroadcastStarted,
+			this, [this, dlg] {
+				io::ActivityBroadcast *activityBroadcast =
+					dlg->activityBroadcast();
+				activityBroadcast->setParent(this);
+				activityBroadcast->setObjectName(
+					QStringLiteral("activitybroadcast"));
+
+				tools::ToolController *toolCtrl = m_doc->toolCtrl();
+				connect(
+					toolCtrl, &tools::ToolController::activeBrushChanged,
+					activityBroadcast, &io::ActivityBroadcast::sendActiveBrush);
+				connect(
+					toolCtrl, &tools::ToolController::activeToolChanged,
+					activityBroadcast, &io::ActivityBroadcast::sendActiveTool);
+				connect(
+					toolCtrl, &tools::ToolController::foregroundColorChanged,
+					activityBroadcast,
+					&io::ActivityBroadcast::sendForegroundColor);
+				m_canvasView->connectActivityBroadcast(activityBroadcast);
+
+				activityBroadcast->sendActiveBrush(toolCtrl->activeBrush());
+				activityBroadcast->sendActiveTool(int(toolCtrl->activeTool()));
+				activityBroadcast->sendForegroundColor(
+					toolCtrl->foregroundColor());
+			});
+
+		io::ActivityBroadcast *activityBroadcast =
+			findChild<io::ActivityBroadcast *>(
+				QStringLiteral("activitybroadcast"),
+				Qt::FindDirectChildrenOnly);
+		if(activityBroadcast) {
+			dlg->setActivityBroadcast(activityBroadcast);
+		}
+
+		utils::showWindow(dlg);
+	}
+}
+#endif
+
 QString MainWindow::extractLoadPath(
 	const QString &path, const QTemporaryFile *tempFile, QString *outBasename)
 {
@@ -10023,7 +10225,7 @@ QString MainWindow::extractLoadPath(
 	}
 
 	if(outBasename) {
-		*outBasename = utils::PathInfo(path).basename();
+		*outBasename = io::PathInfo(path).basename();
 	}
 	return loadPath;
 }

@@ -355,6 +355,7 @@ private slots:
 		qint64 elapsedMsec);
 	void onCanvasDownloadError(const QString &errorMessage);
 	void offerDownload(const QString &defaultName, const QByteArray &bytes);
+	void finishDownload();
 #endif
 	void onTemplateExported(const QString &errorMessage);
 
@@ -460,6 +461,10 @@ private:
 #ifdef DRAWPILE_TIMELAPSE_DIALOG
 	void requestTimelapseDialog();
 #endif
+#ifdef DRAWPILE_REPAIR_DIALOG
+	void repairProject();
+	void repairProjectPath(const QString &path);
+#endif
 
 	void showSelectionMaskColorPicker();
 
@@ -544,6 +549,10 @@ private:
 
 	void setDonationLinkEnabled(bool enabled);
 	QString makeContributionInfoText();
+
+#ifdef DP_HAVE_ACTIVITYBROADCAST
+	void showActivityBroadcastDialog();
+#endif
 
 	static QString extractLoadPath(
 		const QString &path, const QTemporaryFile *tempFile,

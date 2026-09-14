@@ -5,8 +5,9 @@ extern "C" {
 #include <dpengine/project_worker.h>
 }
 #include "libclient/drawdance/global.h"
+#include "libclient/drawdance/viewstate.h"
+#include "libclient/io/files.h"
 #include "libclient/project/projectwrangler.h"
-#include "libshared/util/paths.h"
 #include <QFile>
 #include <QLoggingCategory>
 #include <QTemporaryFile>
@@ -370,7 +371,7 @@ void ProjectWrangler::handleOpenSync(
 		}
 
 		QString error;
-		if(!utils::paths::copyFileContents(sourceFile, *tempFile, error)) {
+		if(!io::copyFileContents(sourceFile, *tempFile, error)) {
 			qCWarning(
 				lcDpProjectWrangler,
 				"Error copying file contents from '%s' to '%s': %s",
@@ -456,12 +457,18 @@ int ProjectWrangler::handlePlayerUpdate(
 			net::MessageList localStateMsgs;
 			bool localStateChanged = DP_project_player_local_state_get_reset(
 				pp, &ProjectWrangler::acceptLocalStateMessage, &localStateMsgs);
+
+			drawdance::ViewState vs;
+			bool viewStateChanged =
+				DP_project_player_view_state_get_reset(pp, &vs.viewState());
+
 			Q_EMIT playerUpdated(
 				controlId, int(getPlayerState(pp)),
 				drawdance::CanvasState::inc(cs), playbackSeconds,
 				DP_project_player_current_session_id(pp),
 				DP_project_player_current_sequence_id(pp), localStateChanged,
-				localStateMsgs);
+				localStateMsgs, viewStateChanged, vs.viewportSize(), vs.pos(),
+				vs.zoom(), vs.rotation(), vs.mirror(), vs.flip());
 		} else {
 			qCWarning(
 				lcDpProjectWrangler,

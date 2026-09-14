@@ -3,8 +3,10 @@
 #include "desktop/filewrangler.h"
 #include "desktop/utils/widgetutils.h"
 #include "desktop/widgets/thumbnail.h"
+#include "libclient/io/files.h"
 #include "libclient/project/recoverymodel.h"
 #include "libclient/utils/scopedoverridecursor.h"
+#include "libclient/utils/strings.h"
 #include "libshared/util/paths.h"
 #include <QCheckBox>
 #include <QDateTime>
@@ -33,6 +35,7 @@ RecoveryEntryWidget::RecoveryEntryWidget(
 	: QFrame(parent)
 	, m_path(entry.path())
 	, m_locked(entry.status() == project::RecoveryStatus::Locked)
+	, m_corrupted(entry.status() == project::RecoveryStatus::Corrupted)
 {
 	setFrameShape(QFrame::Box);
 	setFrameShadow(QFrame::Raised);
@@ -94,7 +97,7 @@ RecoveryEntryWidget::RecoveryEntryWidget(
 
 	sizeLabel->setText(
 		// %1 is a file size, such as "1.23 MB".
-		tr("Size: %1").arg(utils::paths::formatFileSize(entry.fileSize())));
+		tr("Size: %1").arg(strings::formatFileSize(entry.fileSize())));
 
 	QLabel *statusLabel = new QLabel;
 	statusLabel->setWordWrap(true);
@@ -116,6 +119,9 @@ RecoveryEntryWidget::RecoveryEntryWidget(
 		statusLabel->setText(tr("Locked by another process"));
 		canRemove = false;
 		break;
+	case project::RecoveryStatus::Corrupted:
+		statusLabel->setText(tr("Corrupted, may be possible to repair"));
+		break;
 	case project::RecoveryStatus::Error:
 		statusLabel->setText(tr("Error: %1").arg(entry.errorMessage()));
 		break;
@@ -135,12 +141,7 @@ RecoveryEntryWidget::RecoveryEntryWidget(
 	infoLayout->addWidget(recoverButton);
 	connect(
 		recoverButton, &QPushButton::clicked, this,
-#ifdef __EMSCRIPTEN__
-		&RecoveryEntryWidget::download
-#else
-		&RecoveryEntryWidget::save
-#endif
-	);
+		&RecoveryEntryWidget::checkRecover);
 
 	QPushButton *removeButton = new QPushButton;
 	removeButton->setIcon(QIcon::fromTheme(QStringLiteral("trash-empty")));
@@ -174,12 +175,54 @@ void RecoveryEntryWidget::requestRemoval()
 	Q_EMIT removalRequested(m_path);
 }
 
+void RecoveryEntryWidget::checkRecover()
+{
+#if DRAWPILE_REPAIR_DIALOG
+	if(m_corrupted) {
+		QMessageBox *box = utils::makeMessage(
+			this, tr("Corrupted File"),
+			tr("This file is corrupted. Do you want to attempt to repair it or "
+			   "save it as-is?"),
+			tr("You can also attempt to repair it after saving."),
+			QMessageBox::Question,
+			QMessageBox::Save | QMessageBox::SaveAll | QMessageBox::Cancel);
+		box->button(QMessageBox::SaveAll)->setText(tr("Repair"));
+		box->button(QMessageBox::Save)->setText(tr("Save as-is"));
+		connect(box, &QMessageBox::finished, this, [this, box] {
+			QAbstractButton *button = box->clickedButton();
+			if(button == box->button(QMessageBox::SaveAll)) {
+				requestRepair();
+			} else if(button == box->button(QMessageBox::Save)) {
+				recover();
+			}
+		});
+		box->show();
+		return;
+	}
+#endif
+	recover();
+}
+
+void RecoveryEntryWidget::requestRepair()
+{
+	Q_EMIT repairRequested(m_path);
+}
+
+void RecoveryEntryWidget::recover()
+{
+#ifdef __EMSCRIPTEN__
+	download();
+#else
+	save();
+#endif
+}
+
 #ifdef __EMSCRIPTEN__
 void RecoveryEntryWidget::download()
 {
 	QByteArray bytes;
 	QString error;
-	if(utils::paths::slurp(m_path, bytes, error)) {
+	if(io::slurp(m_path, bytes, error)) {
 		FileWrangler(this).saveFileContent(getSuggestedExportBaseName(), bytes);
 		utils::showInformation(
 			this, tr("Download Started"),
@@ -245,53 +288,7 @@ bool RecoveryEntryWidget::saveTo(const QString &savePath, QString &outError)
 {
 	// We don't use QFile::copy here because that doesn't work on Android.
 	utils::ScopedOverrideCursor overrideCursor;
-
-	QFile inputFile(m_path);
-	if(!inputFile.open(QIODevice::ReadOnly)) {
-		outError = tr("Failed to open autorecovery file: %1")
-					   .arg(inputFile.errorString());
-		return false;
-	}
-
-	QSaveFile saveFile(savePath);
-	saveFile.setDirectWriteFallback(true);
-	if(!saveFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-		outError =
-			tr("Failed to open target file: %1").arg(saveFile.errorString());
-		return false;
-	}
-
-	QByteArray buffer;
-	buffer.resize(BUFSIZ);
-	while(true) {
-		qint64 read = inputFile.read(buffer.data(), BUFSIZ);
-		if(read < 0) {
-			outError = tr("Failed to read from autorecovery file: %1")
-						   .arg(inputFile.errorString());
-			return false;
-		} else if(read == 0) {
-			break;
-		} else {
-			qint64 written = saveFile.write(buffer.constData(), read);
-			if(written < 0) {
-				outError = tr("Failed to write to target file: %1")
-							   .arg(saveFile.errorString());
-				return false;
-			} else if(written != read) {
-				outError =
-					tr("Failed to write to target file: read/write mismatch");
-				return false;
-			}
-		}
-	}
-
-	if(!saveFile.commit()) {
-		outError =
-			tr("Failed to commit target file: %1").arg(saveFile.errorString());
-		return false;
-	}
-
-	return true;
+	return io::copySaveFile(m_path, savePath, outError);
 }
 
 bool RecoveryEntryWidget::compareSaved(
@@ -441,6 +438,9 @@ void Recover::updateRecoveryEntries()
 			const project::RecoveryEntry &entry = entries[i];
 			RecoveryEntryWidget *widget = new RecoveryEntryWidget(entry);
 			m_contentLayout->addWidget(widget);
+			connect(
+				widget, &RecoveryEntryWidget::repairRequested, this,
+				&Recover::repairPath);
 			connect(
 				widget, &RecoveryEntryWidget::removalRequested, this,
 				&Recover::removePath);

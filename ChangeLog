@@ -41,6 +41,21 @@ Unreleased Version 2.3.1-pre
  * Feature: Drawpile will now ask you if you start a recording while autorecovery is enabled, to avoid accidentally recording double for no reason. Thanks tiar for reporting.
  * Feature: Allow converting dprec and dptxt recordings to dppr files via File > Import > Convert Recordings to Project. You'll also be prompted about it when you use File > Open on these files.
  * Feature: Support for Android 16. Older versions continue to be supported, same as before.
+ * Fix: Make timeline selection tool work properly while dragging over a track with onion skins enabled.
+ * Feature: Add Tools > Developer Tools > UDP Activity Stream. This emits the cursor position over the canvas view and some other activity over a UDP socket, which can be consumed by stream avatars, brush sound makers and similar programs. Thanks Maniko for suggesting.
+ * Feature: PNG spritesheet export for animations. Thanks greendyno and ULTRA TECH for suggesting.
+ * Fix: A crash when resizing the canvas smaller while a lasso selection is being transformed. Thanks greendyno for reporting.
+ * Feature: Repairing dppr and dpcs files via File > Repair File. If the file is detected to be corrupted, you will also be prompted to repair it when opening or recovering the file.
+ * Feature: The the position, zoom, rotation, mirror and flip state of the view is now saved in dppr files. This state is restored when resuming a session on Android and following it can be toggled in the playback dialog.
+ * Feature: When using Save As to save to a new dppr file, the current dppr file will be used as the basis for it, rather than an empty file. Thanks tiar for suggesting.
+ * Fix: Make Selection → Fill Selection, gradient tool and shape fill tool adhere to layer alpha lock. Thanks hipofiz and Verdrusk for reporting.
+ * Fix: Show proper download progress for list server favicons.
+ * Fix: Make double-clicking dock titlebars not toggle them floating, since that's too easy to activate accidentally.
+ * Fix: Increase the drag threshold for arranging docks and toolbars in general, as well as for docks when not in arrange mode even further, to avoid accidental rearrangements.
+ * Feature: Add File → Merge/split projects. This lets you combine multiple dppr files or pull individual sessions out of them. Adding dprec/dptxt recordings to them is also supported.
+ * Feature: Warn about closing the browser tab too quickly after saving, since several browers will truncate the target file to 0 bytes and then write to a temporary file, leaving you with the former if you exit too quickly.
+ * Feature: The browser pressure tester now shows the pressure value and lets you toggle whether to optimize for low-pressure styluses like Apple Pencils, in case it doesn't get detected automatically.
+ * Server Feature: Tell the user how many hours or minutes remain on their ban if it expires in less than 3 days, since giving just a date can make it confusing with regards to time zones. Thanks Bluestrings for suggesting.
 
 2026-05-16 Version 2.3.1-beta.1
  * Fix: Force canvas view dimensions to be even on hardware renderers, since otherwise the view gets scrunched on some graphics cards.

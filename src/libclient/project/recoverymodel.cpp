@@ -2,9 +2,9 @@
 extern "C" {
 #include <dpengine/project.h>
 }
+#include "libclient/io/pathinfo.h"
 #include "libclient/project/metadata.h"
 #include "libclient/project/recoverymodel.h"
-#include "libclient/utils/pathinfo.h"
 #include "libclient/utils/wasmpersistence.h"
 #include <QDir>
 #include <QHash>
@@ -92,7 +92,7 @@ QString RecoveryEntry::mostDescriptiveBaseName() const
 	loadMetadata();
 
 	if(!m_lastSave.isEmpty()) {
-		QString lastSaveBaseName = utils::PathInfo(m_lastSave).basename();
+		QString lastSaveBaseName = io::PathInfo(m_lastSave).basename();
 		stripExtension(lastSaveBaseName);
 		if(!lastSaveBaseName.isEmpty()) {
 			return lastSaveBaseName;
@@ -100,7 +100,7 @@ QString RecoveryEntry::mostDescriptiveBaseName() const
 	}
 
 	if(!m_lastExport.isEmpty()) {
-		QString lastExportBaseName = utils::PathInfo(m_lastExport).basename();
+		QString lastExportBaseName = io::PathInfo(m_lastExport).basename();
 		stripExtension(lastExportBaseName);
 		if(!lastExportBaseName.isEmpty()) {
 			return lastExportBaseName;
@@ -315,6 +315,10 @@ RecoveryStatus RecoveryModel::checkRecoveryStatus(
 		}
 		if(result.error == DP_PROJECT_OPEN_ERROR_LOCKED) {
 			return RecoveryStatus::Locked;
+		} else if(
+			DP_PROJECT_ERROR_IN(result.error, DP_PROJECT_OPEN_ERROR) &&
+			DP_project_sql_result_corrupt(result.sql_result)) {
+			return RecoveryStatus::Corrupted;
 		} else {
 			return RecoveryStatus::Error;
 		}

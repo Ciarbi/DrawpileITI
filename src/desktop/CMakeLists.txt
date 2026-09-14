@@ -413,6 +413,8 @@ target_sources(drawpile PRIVATE
 	view/widgettouchhandler.h
 	widgets/artisticcolorwheel.cpp
 	widgets/artisticcolorwheel.h
+	widgets/banner.cpp
+	widgets/banner.h
 	widgets/brushpreview.cpp
 	widgets/brushpreview.h
 	widgets/canvasframe.cpp
@@ -608,6 +610,13 @@ if(PROXY_STYLE)
 	dp_qt_private_headers(drawpile Widgets)
 endif()
 
+if(HAVE_UDPSOCKETS)
+	target_sources(drawpile PRIVATE
+		dialogs/activitybroadcastdialog.cpp
+		dialogs/activitybroadcastdialog.h
+	)
+endif()
+
 # Some special handling for Android:
 # * It can't deal with multiple main windows properly, trying to open a second
 #	one hides the first with no way to switch between them.
@@ -771,12 +780,15 @@ add_feature_info("External QtColorWidgets" "TARGET QtColorWidgets::QtColorWidget
 if(NOT EMSCRIPTEN)
 	target_compile_definitions(drawpile PRIVATE
 		DRAWPILE_PROJECT_DIALOG=1
+		DRAWPILE_REPAIR_DIALOG=1
 	)
 	target_sources(drawpile PRIVATE
 		dialogs/projectdialog.cpp
 		dialogs/projectdialog.h
 		dialogs/projecteditdialog.cpp
 		dialogs/projecteditdialog.h
+		dialogs/projectrepairdialog.cpp
+		dialogs/projectrepairdialog.h
 		dialogs/startdialog/recent.cpp
 		dialogs/startdialog/recent.h
 		dialogs/startdialog/updatenotice.cpp

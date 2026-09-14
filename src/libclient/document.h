@@ -37,6 +37,10 @@ namespace config {
 class Config;
 }
 
+namespace drawdance {
+class ViewState;
+}
+
 namespace net {
 class AnnouncementListModel;
 class BanlistModel;
@@ -85,8 +89,9 @@ public:
 		DP_SaveImageType type, bool dirty, bool autoRecord,
 		const QString &continueSourceParam, long long continueSequenceId);
 	void resumeState(
-		const drawdance::CanvasState &canvasState, const QString &path,
-		bool autoRecord, long long resumeSessionId);
+		const drawdance::CanvasState &canvasState,
+		const drawdance::ViewState &vs, const QString &path, bool autoRecord,
+		long long resumeSessionId);
 
 	DP_LoadResult loadDebugDump(const QString &path)
 	{
@@ -99,11 +104,12 @@ public:
 	}
 
 	void saveCanvasAs(
-		const QString &path, DP_SaveImageType type, bool exported, bool append);
+		const QString &path, DP_SaveImageType type, bool exported, bool append,
+		bool copyPrevious);
 	void saveCanvasStateAs(
 		const QString &path, DP_SaveImageType type,
 		const drawdance::CanvasState &canvasState, bool isCurrentState,
-		bool exported, bool append);
+		bool exported, bool append, bool copyPrevious);
 	void exportTemplate(const QString &path);
 	bool saveSelection(const QString &path);
 	bool isSaveInProgress() const { return m_saveInProgress; }
@@ -375,7 +381,8 @@ private:
 
 	void saveCanvasState(
 		const drawdance::CanvasState &canvasState, bool isCurrentState,
-		bool exported, bool append, const QString &path, DP_SaveImageType type);
+		bool exported, bool append, bool copyPrevious, const QString &path,
+		DP_SaveImageType type);
 #ifdef __EMSCRIPTEN__
 	void onDownloadSucceeded(
 		QObject *saver, QTemporaryDir *tempDir, const QString &fileName,
