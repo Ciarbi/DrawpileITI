@@ -1153,6 +1153,7 @@ void CanvasView::enterEvent(compat::EnterEvent *event)
 	}
 
 	m_tabletFilter.reset();
+	resetCursor();
 }
 
 void CanvasView::leaveEvent(QEvent *event)
@@ -1785,6 +1786,7 @@ void CanvasView::touchPressEvent(
 	QEvent *event, long long timeMsec, const QPointF &pos,
 	const QPoint &globalPos, qreal pressure)
 {
+	updateCursorPos(pos.toPoint());
 	penPressEvent(
 		event, timeMsec, pos, globalPos, pressure, 0.0, 0.0, 0.0,
 		Qt::LeftButton, Qt::NoModifier, int(tools::DeviceType::Touch), false);
