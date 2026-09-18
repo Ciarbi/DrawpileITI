@@ -107,7 +107,10 @@ struct ChatWidget::Private {
 	QAction *detachRegularAction = nullptr;
 	QAction *detachOnTopAction = nullptr;
 	QAction *detachAlwaysOnTopAction = nullptr;
+	QAction *detachOverlayAction = nullptr;
 	QAction *muteAction = nullptr;
+	QAction *chatPositionMenuAction = nullptr;
+	QAction *opacityMenuAction = nullptr;
 
 	QList<int> announcedUsers;
 	canvas::CanvasModel *canvas = nullptr;
@@ -274,16 +277,26 @@ ChatWidget::ChatWidget(bool smallScreenMode, QWidget *parent)
 		d->detachOnTopAction = detachMenu->addAction(
 			//: A chat detach option, "detach > on top of Drawpile".
 			tr("On top of Drawpile"), this, &ChatWidget::detachOnTopRequested);
-		d->detachOnTopAction = detachMenu->addAction(
+		d->detachAlwaysOnTopAction = detachMenu->addAction(
 			//: A chat detach option, "detach > on top of everything".
 			tr("On top of everything"), this,
 			&ChatWidget::detachAlwaysOnTopRequested);
+		d->detachOverlayAction = detachMenu->addAction(
+			tr("As overlay"), this, &ChatWidget::detachOverlayRequested);
 	}
 
 	d->muteAction = d->externalMenu->addAction(
 		tr("Mute notifications"), this, &ChatWidget::muteChanged);
 	d->muteAction->setStatusTip(tr("Toggle notifications for this window"));
 	d->muteAction->setCheckable(true);
+
+	d->chatPositionMenuAction = d->externalMenu->addAction(tr("Chat position"));
+	QMenu *chatPositionMenu = new QMenu(this);
+	d->chatPositionMenuAction->setMenu(chatPositionMenu);
+	chatPositionMenu->addAction(
+		tr("Top"), this, &ChatWidget::setChatPositionTop);
+	chatPositionMenu->addAction(
+		tr("Bottom"), this, &ChatWidget::setChatPositionBottom);
 
 	connect(
 		d->externalMenu, &QMenu::aboutToShow, this,
@@ -1103,8 +1116,8 @@ void ChatWidget::showChatContextMenu(const QPoint &pos)
 	menu->addSeparator();
 
 	QAction *actions[] = {
-		d->clearAction, d->compactAction, d->attachAction, d->detachMenuAction,
-		d->muteAction};
+		d->clearAction, d->compactAction, d->attachAction,
+		d->detachMenuAction, d->muteAction, d->chatPositionMenuAction};
 	for(QAction *action : actions) {
 		if(action && action->isVisible()) {
 			menu->addAction(action);
@@ -1346,6 +1359,20 @@ void ChatWidget::notifySanitize(
 		clean.append(QStringLiteral("…"));
 	}
 	notify(event, clean);
+}
+
+void ChatWidget::setChatPositionTop()
+{
+	if(parent()) {
+		emit requestChatPositionTop();
+	}
+}
+
+void ChatWidget::setChatPositionBottom()
+{
+	if(parent()) {
+		emit requestChatPositionBottom();
+	}
 }
 
 void ChatWidget::notify(notification::Event event, const QString &message)

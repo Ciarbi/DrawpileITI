@@ -237,26 +237,34 @@ void FloodFill::setForegroundColor(const QColor &color)
 void FloodFill::setParameters(
 	int tolerance, int expansion, int kernel, int featherRadius, int size,
 	qreal opacity, int gap, Source source, int blendMode, Area area,
-	bool editableFills, bool confirmFills)
+	bool editableFills, bool confirmFills,
+	FillTextureSource textureSource, const QImage &textureImage, int textureLayerId)
 {
-	bool needsUpdate = opacity != m_opacity || blendMode != m_blendMode;
+	bool opacityChanged = opacity != m_opacity;
+	bool blendModeChanged = blendMode != m_blendMode;
+	bool textureImageChanged = textureImage != m_textureImage;
+	bool needsTextureUpdate = textureSource != m_textureSource ||
+							  textureLayerId != m_textureLayerId ||
+							  textureImageChanged;
 	bool needsRefill = tolerance != m_tolerance || expansion != m_expansion ||
 					   kernel != m_kernel || featherRadius != m_featherRadius ||
 					   size != m_size || gap != m_gap || source != m_source ||
 					   area != m_area;
 	m_editableFills = editableFills;
+	m_textureSource = textureSource;
+	m_textureImage = textureImage;
+	m_textureLayerId = textureLayerId;
 
 	if(confirmFills != m_confirmFills) {
 		m_confirmFills = confirmFills;
 		updateCursor();
 	}
 
-	if(needsUpdate) {
+	if(opacityChanged) {
 		m_opacity = opacity;
+	}
+	if(blendModeChanged) {
 		m_blendMode = blendMode;
-		if(!needsRefill) {
-			updatePendingPreview();
-		}
 	}
 
 	if(needsRefill) {
@@ -269,6 +277,8 @@ void FloodFill::setParameters(
 		m_source = source;
 		m_area = area;
 		repeatFill();
+	} else if(needsTextureUpdate || opacityChanged || blendModeChanged) {
+		updatePendingPreview();
 	}
 }
 
@@ -427,7 +437,7 @@ void FloodFill::previewPending()
 						disposePending();
 					}
 				} else {
-					adjustPendingImage(true, false);
+					adjustPendingImage(true, false, true);
 					canvas->paintEngine()->previewFill(
 						layerId, getEffectiveBlendModeForLayer(layerId),
 						m_pendingEditable ? m_opacity : m_originalOpacity,
@@ -453,7 +463,7 @@ void FloodFill::flushPending()
 							.data(canvas::LayerListModel::IsGroupRole)
 							.toBool();
 		if(canFill) {
-			adjustPendingImage(m_pendingEditable, true);
+			adjustPendingImage(m_pendingEditable, true, true);
 			net::Client *client = m_owner.client();
 			uint8_t contextId = client->myId();
 			net::MessageList msgs;
@@ -483,17 +493,31 @@ void FloodFill::disposePending()
 	}
 }
 
-void FloodFill::adjustPendingImage(bool adjustColor, bool adjustOpacity)
+void FloodFill::adjustPendingImage(bool adjustColor, bool adjustOpacity,
+								bool adjustTexture)
 {
 	QColor color = m_owner.foregroundColor();
 	qreal opacity = m_pendingEditable ? m_opacity : m_originalOpacity;
+	bool isTextureMode = m_textureSource == FillTextureSource::Image ||
+						 m_textureSource == FillTextureSource::Layer;
 	bool needsColorChange = adjustColor && blendModeHandlesColor(m_blendMode) &&
-							m_pendingColor != color;
+							m_pendingColor != color && !isTextureMode;
 	bool needsOpacityChange = adjustOpacity && opacity < 1.0;
-	if(needsColorChange || needsOpacityChange) {
+	bool needsTextureApply = adjustTexture && !m_textureImage.isNull() &&
+						   isTextureMode;
+	if(needsColorChange || needsOpacityChange || needsTextureApply) {
 		QPainter painter(&m_pendingImage);
 		QRect rect = m_pendingImage.rect();
-		if(needsColorChange) {
+		if(needsTextureApply) {
+			QImage textureFill(m_pendingImage.size(), QImage::Format_ARGB32_Premultiplied);
+			textureFill.fill(Qt::transparent);
+			QPixmap pixmap = QPixmap::fromImage(m_textureImage);
+			QPainter tmpPainter(&textureFill);
+			tmpPainter.setCompositionMode(QPainter::CompositionMode_Source);
+			tmpPainter.drawTiledPixmap(rect, pixmap);
+			painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+			painter.drawImage(rect.topLeft(), textureFill);
+		} else if(needsColorChange) {
 			painter.setCompositionMode(QPainter::CompositionMode_SourceAtop);
 			painter.fillRect(rect, color);
 			m_pendingColor = color;

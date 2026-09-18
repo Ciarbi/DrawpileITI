@@ -7,7 +7,9 @@
 #include <QWidget>
 
 class KisSliderSpinBox;
+class QComboBox;
 class QLabel;
+class QToolButton;
 
 namespace color_widgets {
 class ColorPreview;
@@ -33,11 +35,17 @@ signals:
 
 private slots:
 	void updateCreateButton();
+	void updatePresetCombo();
+	void swapDimensions();
 	void showColorPicker();
 
 private:
 	KisSliderSpinBox *m_widthSpinner;
 	KisSliderSpinBox *m_heightSpinner;
+	QComboBox *m_presetCombo;
+	QToolButton *m_swapButton;
+	bool m_customDimensions;
+	bool m_applyingPreset;
 	color_widgets::ColorPreview *m_backgroundPreview;
 	QLabel *m_errorLabel;
 };

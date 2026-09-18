@@ -94,6 +94,7 @@ private:
 
 	bool isTransformActive() const;
 	canvas::TransformModel *getActiveTransformModel() const;
+	void setupTransform(canvas::TransformModel *transform, bool firstClick, Mode mode);
 	canvas::TransformModel *
 	tryBeginMove(bool firstClick, bool onlyMask, Mode mode);
 	void tryBeginPaste(const QRect &srcBounds, const QImage &image);

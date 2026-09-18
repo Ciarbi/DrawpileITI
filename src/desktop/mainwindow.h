@@ -13,6 +13,7 @@ extern "C" {
 #include <QByteArray>
 #include <QDeadlineTimer>
 #include <QElapsedTimer>
+#include <QList>
 #include <QMainWindow>
 #include <QMap>
 #include <QPointer>
@@ -40,6 +41,7 @@ namespace widgets {
 class CanvasFrame;
 class ChatBox;
 class DualColorButton;
+class GroupedToolButton;
 class NetStatus;
 class ProjectRecordingStatusButton;
 class ViewStatus;
@@ -326,6 +328,8 @@ private slots:
 	void toolChanged(tools::Tool::Type tool);
 	void updateFreehandToolButton(int brushMode);
 	void handleFreehandToolButtonClicked();
+	void updateShapesToolButton(tools::Tool::Type tool);
+	void handleShapesToolButtonClicked();
 
 	void updateSelectTransformActions();
 	void updateSelectionMaskVisibility();
@@ -469,6 +473,11 @@ private:
 
 	void readSettings(bool windowpos = true);
 	void restoreSettings(config::Config *cfg);
+	void setChatPositionTop();
+	void setChatPositionBottom();
+	void setChatPosition(bool bottom, bool save);
+	void restoreChatSplitterState(config::Config *cfg);
+	QList<int> defaultChatSplitterSizes() const;
 	void initSmallScreenState();
 	void initDefaultDocks();
 	void setDefaultDockSizes();
@@ -572,6 +581,7 @@ private:
 
 	QSplitter *m_splitter;
 	int m_splitterOriginalHandleWidth;
+	bool m_chatPositionBottom = true;
 
 	docks::ToolSettings *m_dockToolSettings;
 	docks::BrushPalette *m_dockBrushPalette;
@@ -592,6 +602,7 @@ private:
 	QWidget *m_smallScreenRightSpacer = nullptr;
 	QAction *m_freehandAction;
 	QToolButton *m_freehandButton = nullptr;
+	widgets::GroupedToolButton *m_shapesButton = nullptr;
 	QByteArray m_intendedDockState;
 	QByteArray m_hiddenDockState;
 	widgets::ChatBox *m_chatbox;

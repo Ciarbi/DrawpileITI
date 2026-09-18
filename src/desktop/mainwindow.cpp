@@ -75,6 +75,7 @@ extern "C" {
 #include "desktop/widgets/projectrecordingstatusbutton.h"
 #include "desktop/widgets/viewstatus.h"
 #include "desktop/widgets/viewstatusbar.h"
+#include "libclient/canvas/acl.h"
 #include "libclient/canvas/blendmodes.h"
 #include "libclient/canvas/canvasmodel.h"
 #include "libclient/canvas/documentmetadata.h"
@@ -260,6 +261,8 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	DrawpileApp *app = &dpApp();
 	config::Config *cfg = app->config();
 	m_doc = new Document(app->canvasImplementation(), app->config(), this);
+	m_chatPositionBottom = QSettings().value(
+		QStringLiteral("settings/chatPositionBottom"), true).toBool();
 
 	// Set up the main window widgets
 	// The central widget consists of a custom status bar and a splitter
@@ -315,23 +318,24 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	m_canvasView->setShowToggleItems(m_smallScreenMode, m_leftyMode);
 
 	m_canvasFrame = new widgets::CanvasFrame(m_canvasView->viewWidget());
+	m_canvasFrame->setObjectName(QStringLiteral("canvasFrame"));
 	m_splitter->addWidget(m_canvasFrame);
 	m_splitter->setCollapsible(SPLITTER_WIDGET_IDX++, false);
 
 	// Create the chatbox
 	m_chatbox = new widgets::ChatBox(m_doc, m_smallScreenMode, this);
+	m_chatbox->setObjectName(QStringLiteral("chatbox"));
 	m_splitter->addWidget(m_chatbox);
 
 	connect(
+		m_chatbox, &widgets::ChatBox::requestChatPositionTop, this,
+		&MainWindow::setChatPositionTop);
+	connect(
+		m_chatbox, &widgets::ChatBox::requestChatPositionBottom, this,
+		&MainWindow::setChatPositionBottom);
+	connect(
 		m_chatbox, &widgets::ChatBox::reattachNowPlease, this, [this, cfg]() {
-			m_splitter->addWidget(m_chatbox);
-			QByteArray state = cfg->getLastWindowViewState();
-			bool haveSplitterState =
-				!state.isEmpty() && m_splitter->restoreState(state);
-			if(!haveSplitterState || m_chatbox->isCollapsed()) {
-				int h = height();
-				m_splitter->setSizes({h * 2 / 3, h / 3});
-			}
+			restoreChatSplitterState(cfg);
 		});
 
 	// Nice initial division between canvas and chat
@@ -1593,6 +1597,8 @@ void MainWindow::restoreSettings(config::Config *cfg)
 		m_splitter->setHandleWidth(m_splitterOriginalHandleWidth);
 	}
 
+	setChatPosition(m_chatPositionBottom, false);
+
 	const QVariantMap docksConfig = cfg->getLastWindowDocks();
 	for(QDockWidget *dw :
 		findChildren<QDockWidget *>(QString(), Qt::FindDirectChildrenOnly)) {
@@ -1605,6 +1611,101 @@ void MainWindow::restoreSettings(config::Config *cfg)
 			}
 		}
 	}
+}
+
+void MainWindow::setChatPositionTop()
+{
+	setChatPosition(false, true);
+}
+
+void MainWindow::setChatPositionBottom()
+{
+	setChatPosition(true, true);
+}
+
+void MainWindow::setChatPosition(bool bottom, bool save)
+{
+	if(m_smallScreenMode || !m_splitter || !m_canvasFrame || !m_chatbox) {
+		m_chatPositionBottom = bottom;
+		if(save) {
+			QSettings().setValue(
+				QStringLiteral("settings/chatPositionBottom"), bottom);
+		}
+		return;
+	}
+
+	m_chatPositionBottom = bottom;
+	if(save) {
+		QSettings().setValue(
+			QStringLiteral("settings/chatPositionBottom"), bottom);
+	}
+
+	const int chatIndex = m_splitter->indexOf(m_chatbox);
+	if(chatIndex < 0) {
+		return;
+	}
+
+	const int targetIndex = bottom ? 1 : 0;
+	if(chatIndex == targetIndex) {
+		return;
+	}
+
+	const QList<int> sizes = m_splitter->sizes();
+	const int chatSize = sizes.value(chatIndex, height() / 3);
+	const int canvasIndex = m_splitter->indexOf(m_canvasFrame);
+	const int canvasSize = sizes.value(canvasIndex, height() * 2 / 3);
+
+	if(bottom) {
+		m_splitter->insertWidget(1, m_chatbox);
+		m_splitter->setSizes({canvasSize, chatSize});
+	} else {
+		m_splitter->insertWidget(0, m_chatbox);
+		m_splitter->setSizes({chatSize, canvasSize});
+	}
+	m_saveSplitterDebounce.start();
+}
+
+void MainWindow::restoreChatSplitterState(config::Config *cfg)
+{
+	if(m_splitter && m_chatbox && m_canvasFrame &&
+	   m_splitter->indexOf(m_chatbox) < 0) {
+		if(m_chatPositionBottom) {
+			m_splitter->addWidget(m_chatbox);
+		} else {
+			m_splitter->insertWidget(0, m_chatbox);
+		}
+	}
+	const QByteArray state = cfg->getLastWindowViewState();
+	const bool haveSplitterState =
+		!state.isEmpty() && m_splitter->restoreState(state);
+	setChatPosition(m_chatPositionBottom, false);
+	if(!haveSplitterState || m_chatbox->isCollapsed()) {
+		m_splitter->setSizes(defaultChatSplitterSizes());
+	}
+	if(m_splitter->count() != 2) {
+		m_chatbox->hide();
+		m_canvasFrame->hide();
+		for(int i = m_splitter->count() - 1; i >= 0; --i) {
+			m_splitter->widget(i)->setParent(nullptr);
+		}
+		m_splitter->addWidget(m_canvasFrame);
+		if(m_chatPositionBottom) {
+			m_splitter->addWidget(m_chatbox);
+		} else {
+			m_splitter->insertWidget(0, m_chatbox);
+		}
+		m_chatbox->show();
+		m_canvasFrame->show();
+	}
+}
+
+QList<int> MainWindow::defaultChatSplitterSizes() const
+{
+	const int h = height();
+	if(m_chatPositionBottom) {
+		return {h * 2 / 3, h / 3};
+	}
+	return {h / 3, h * 2 / 3};
 }
 
 void MainWindow::initSmallScreenState()
@@ -2341,6 +2442,8 @@ void MainWindow::setToolBarConfig(const QVariantHash &cfg)
 {
 	delete m_freehandButton;
 	m_freehandButton = nullptr;
+	delete m_shapesButton;
+	m_shapesButton = nullptr;
 
 	m_toolBarDraw->clear();
 
@@ -2365,6 +2468,36 @@ void MainWindow::setToolBarConfig(const QVariantHash &cfg)
 						&tools::BrushSettings::brushModeChanged, this,
 						&MainWindow::updateFreehandToolButton);
 					m_toolBarDraw->addWidget(m_freehandButton);
+			} else if(action->objectName() == "toolrect" ||
+				action->objectName() == "toolellipse" ||
+				action->objectName() == "tooltriangle" ||
+				action->objectName() == "tooldiamond") {
+				if(!m_shapesButton) {
+					m_shapesButton = new widgets::GroupedToolButton(this);
+					m_shapesButton->setPopupMode(QToolButton::InstantPopup);
+					QMenu *shapesMenu = new QMenu(m_shapesButton);
+					auto addShapeAction = [shapesMenu, this](QAction *a) {
+						QAction *menuAction = shapesMenu->addAction(a->icon(), a->text());
+						menuAction->setStatusTip(a->statusTip());
+						connect(menuAction, &QAction::triggered, a, &QAction::trigger);
+						return menuAction;
+					};
+					QAction *rectangleAction = m_drawingtools->actions().at(int(tools::Tool::RECTANGLE));
+					QAction *ellipseAction = m_drawingtools->actions().at(int(tools::Tool::ELLIPSE));
+					QAction *triangleAction = m_drawingtools->actions().at(int(tools::Tool::TRIANGLE));
+					QAction *diamondAction = m_drawingtools->actions().at(int(tools::Tool::DIAMOND));
+					addShapeAction(rectangleAction);
+					addShapeAction(ellipseAction);
+					addShapeAction(triangleAction);
+					addShapeAction(diamondAction);
+						m_shapesButton->setMenu(shapesMenu);
+						m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("shapes")));
+						m_shapesButton->setToolTip(tr("Shapes"));
+						m_shapesButton->setStatusTip(tr("Shape tools"));
+						connect(m_shapesButton, &QToolButton::clicked, this, &MainWindow::handleShapesToolButtonClicked);
+						updateShapesToolButton(m_dockToolSettings->currentTool());
+						m_toolBarDraw->addWidget(m_shapesButton);
+					}
 				} else {
 					m_toolBarDraw->addAction(action);
 				}
@@ -5550,6 +5683,45 @@ void MainWindow::toolChanged(tools::Tool::Type tool)
 
 	m_doc->toolCtrl()->setActiveTool(tool);
 	triggerUpdateLockState();
+	updateShapesToolButton(tool);
+}
+
+void MainWindow::updateShapesToolButton(tools::Tool::Type tool)
+{
+	if(m_shapesButton) {
+		switch(tool) {
+		case tools::Tool::RECTANGLE:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("draw-rectangle")));
+			break;
+		case tools::Tool::ELLIPSE:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("draw-ellipse")));
+			break;
+		case tools::Tool::TRIANGLE:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("triangle")));
+			break;
+		case tools::Tool::DIAMOND:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("diamond")));
+			break;
+		default:
+			m_shapesButton->setIcon(QIcon::fromTheme(QStringLiteral("shapes")));
+			break;
+		}
+	}
+}
+
+void MainWindow::handleShapesToolButtonClicked()
+{
+	if(m_shapesButton) {
+		QSignalBlocker blocker(m_shapesButton);
+		auto tool = m_dockToolSettings->currentTool();
+		if(tool == tools::Tool::RECTANGLE ||
+		   tool == tools::Tool::ELLIPSE ||
+		   tool == tools::Tool::TRIANGLE ||
+		   tool == tools::Tool::DIAMOND) {
+			return;
+		}
+	}
+	m_drawingtools->actions().at(int(tools::Tool::ELLIPSE))->trigger();
 }
 
 // clang-format on
@@ -5793,9 +5965,51 @@ void MainWindow::pasteImage(
 			force);
 		if(!srcBounds.isEmpty() &&
 		   m_doc->checkPermission(DP_FEATURE_PUT_IMAGE)) {
-			m_dockToolSettings->startTransformPaste(
-				srcBounds,
-				image.convertToFormat(QImage::Format_ARGB32_Premultiplied));
+			canvas::AclState *acl = canvas->aclState();
+			if(!acl ||
+			   !(acl->canUseFeature(DP_FEATURE_EDIT_LAYERS) ||
+				 acl->canUseFeature(DP_FEATURE_OWN_LAYERS))) {
+				m_doc->checkPermission(DP_FEATURE_EDIT_LAYERS);
+				return;
+			}
+
+			canvas::LayerListModel *layers = canvas->layerlist();
+			QVector<int> ids = layers->getAvailableLayerIds(1);
+			if(ids.isEmpty()) {
+				qWarning("pasteImage: no available layer IDs");
+				return;
+			}
+
+			int newLayerId = ids.first();
+			int activeLayer = m_doc->toolCtrl()->activeLayer();
+			int targetLayer = activeLayer > 0 ? activeLayer : 0;
+			uint8_t flags = 0;
+			QModelIndex targetIndex = layers->layerIndex(targetLayer);
+			if(targetIndex.isValid() &&
+			   targetIndex.data(canvas::LayerListModel::IsGroupRole).toBool()) {
+				flags |= DP_MSG_LAYER_TREE_CREATE_FLAGS_INTO;
+			}
+
+			QImage argbImage =
+				image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+			net::MessageList msgs;
+			msgs.reserve(3);
+			msgs.append(net::makeUndoPointMessage(canvas->localUserId()));
+			msgs.append(net::makeLayerTreeCreateMessage(
+				canvas->localUserId(), newLayerId, 0, targetLayer, 0, flags,
+				layers->getAvailableLayerName(QStringLiteral("Pasted Image"))));
+
+			int putMessageCount = msgs.size();
+			net::makePutImageMessagesCompat(
+				msgs, canvas->localUserId(), newLayerId, DP_BLEND_MODE_NORMAL,
+				srcBounds.x(), srcBounds.y(), argbImage,
+				canvas->isCompatibilityMode());
+			if(msgs.size() == putMessageCount) {
+				return;
+			}
+
+			layers->setLayerIdToSelect(newLayerId);
+			m_doc->client()->sendCommands(msgs.size(), msgs.constData());
 		}
 	}
 }
@@ -7404,16 +7618,7 @@ void MainWindow::setupActions()
 			handleToggleAction(action);
 		} else {
 			if(show) {
-				QByteArray state = cfg->getLastWindowViewState();
-				if(!state.isEmpty()) {
-					m_splitter->restoreState(state);
-				}
-
-				if(m_chatbox->isCollapsed()) {
-					int h = height();
-					m_splitter->setSizes({h * 2 / 3, h / 3});
-				}
-
+				restoreChatSplitterState(cfg);
 				m_chatbox->focusInput();
 				m_saveSplitterDebounce.start();
 			} else {
@@ -8428,6 +8633,8 @@ void MainWindow::setupActions()
 	QAction *recttool = makeAction("toolrect", tr("&Rectangle")).icon("draw-rectangle").statusTip(tr("Draw unfilled squares and rectangles")).shortcut("R").checkable();
 	QAction *ellipsetool = makeAction("toolellipse", tr("&Ellipse")).icon("draw-ellipse").statusTip(tr("Draw unfilled circles and ellipses")).shortcut("O").checkable();
 	QAction *beziertool = makeAction("toolbezier", tr("Bezier Curve")).icon("draw-bezier-curves").statusTip(tr("Draw bezier curves")).shortcut("Ctrl+B").checkable();
+	QAction *triangletool = makeAction("tooltriangle", tr("&Triangle")).icon("triangle").statusTip(tr("Draw triangles")).shortcut("Ctrl+T").checkable();
+	QAction *diamondtool = makeAction("tooldiamond", tr("&Diamond")).icon("diamond").statusTip(tr("Draw diamond shapes")).shortcut("Ctrl+D").checkable();
 	QAction *filltool = makeAction("toolfill", tr("&Flood Fill")).icon("fill-color").statusTip(tr("Fill areas")).shortcut("F").checkable();
 	QAction *lassofilltool = makeAction("toollassofill", tr("S&hape Fill")).icon("drawpile_lassofill").statusTip(tr("Fill enclosed areas")).shortcut("Shift+F").checkable();
 	QAction *gradienttool = makeAction("toolgradient", tr("&Gradient")).icon("drawpile_gradient").statusTip(tr("Create a gradient inside selected areas")).shortcut("G").checkable();
@@ -8451,6 +8658,8 @@ void MainWindow::setupActions()
 	m_drawingtools->addAction(recttool);
 	m_drawingtools->addAction(ellipsetool);
 	m_drawingtools->addAction(beziertool);
+	m_drawingtools->addAction(triangletool);
+	m_drawingtools->addAction(diamondtool);
 	m_drawingtools->addAction(filltool);
 	m_drawingtools->addAction(lassofilltool);
 	m_drawingtools->addAction(gradienttool);
@@ -8488,7 +8697,29 @@ void MainWindow::setupActions()
 	}
 
 	QMenu *toolsmenu = menuBar()->addMenu(tr("Tools"));
-	toolsmenu->addActions(m_drawingtools->actions());
+	QMenu *shapesmenu = toolsmenu->addMenu(tr("&Shapes"));
+	shapesmenu->addAction(linetool);
+	shapesmenu->addAction(recttool);
+	shapesmenu->addAction(ellipsetool);
+	shapesmenu->addAction(beziertool);
+	shapesmenu->addAction(triangletool);
+	shapesmenu->addAction(diamondtool);
+	toolsmenu->addAction(m_freehandAction);
+	toolsmenu->addAction(erasertool);
+	toolsmenu->addAction(filltool);
+	toolsmenu->addAction(lassofilltool);
+	toolsmenu->addAction(gradienttool);
+	toolsmenu->addAction(annotationtool);
+	toolsmenu->addAction(pickertool);
+	toolsmenu->addAction(lasertool);
+	toolsmenu->addAction(selectiontool);
+	toolsmenu->addAction(lassotool);
+	toolsmenu->addAction(magicwandtool);
+	toolsmenu->addAction(transformtool);
+	toolsmenu->addAction(pantool);
+	toolsmenu->addAction(zoomtool);
+	toolsmenu->addAction(rotationtool);
+	toolsmenu->addAction(inspectortool);
 	toolsmenu->addAction(toolbarconfig);
 	toolsmenu->addSeparator();
 

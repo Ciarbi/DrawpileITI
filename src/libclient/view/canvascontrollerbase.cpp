@@ -560,6 +560,7 @@ void CanvasControllerBase::handleEnter()
 	setCursorOnCanvas(true);
 	updateOutline();
 	resetTabletFilter();
+	resetCursor();
 }
 
 void CanvasControllerBase::handleLeave()
@@ -672,6 +673,7 @@ void CanvasControllerBase::handleMousePress(QMouseEvent *event)
 	   !touching &&
 	   (button != Qt::LeftButton || m_tabletEventTimer.hasExpired())) {
 		event->accept();
+		setCursorPos(posf);
 		penPressEvent(
 			QDateTime::currentMSecsSinceEpoch(), posf,
 			compat::globalPos(*event), 1.0, 0.0, 0.0, 0.0, button,
@@ -1992,6 +1994,7 @@ void CanvasControllerBase::touchPressEvent(
 	const QPoint &globalPos, qreal pressure)
 {
 	Q_UNUSED(event);
+	setCursorPos(posf);
 	penPressEvent(
 		timeMsec, posf, globalPos, pressure, 0.0, 0.0, 0.0, Qt::LeftButton,
 		Qt::NoModifier, int(tools::DeviceType::Touch), false);

@@ -4,6 +4,7 @@
 #include "desktop/notifications.h"
 #include <QWidget>
 
+class QAction;
 class QMenu;
 
 namespace canvas {
@@ -83,14 +84,19 @@ private slots:
 	void attach();
 	void setMentionEnabled(bool enabled);
 	void setMentionTriggerList(const QString &triggerList);
+	void setChatPositionTop();
+	void setChatPositionBottom();
 
 signals:
 	void message(const net::Message &msg);
 	void detachRegularRequested();
 	void detachOnTopRequested();
 	void detachAlwaysOnTopRequested();
+	void detachOverlayRequested();
 	void expandRequested();
 	void muteChanged(bool muted);
+	void requestChatPositionTop();
+	void requestChatPositionBottom();
 
 private:
 #ifdef Q_OS_ANDROID

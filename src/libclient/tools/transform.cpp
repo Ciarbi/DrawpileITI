@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "libclient/tools/transform.h"
 #include "libclient/canvas/canvasmodel.h"
+#include "libclient/canvas/layerlist.h"
+#include "libclient/canvas/paintengine.h"
 #include "libclient/canvas/selectionmodel.h"
 #include "libclient/canvas/transformmodel.h"
 #include "libclient/net/client.h"
 #include "libclient/tools/toolcontroller.h"
 #include "libclient/utils/cursors.h"
+#include "libclient/drawdance/canvasstate.h"
 #include <QCoreApplication>
 #include <QPair>
 #include <cmath>
@@ -405,6 +408,19 @@ canvas::TransformModel *TransformTool::getActiveTransformModel() const
 	return nullptr;
 }
 
+void TransformTool::setupTransform(canvas::TransformModel *transform, bool firstClick, Mode mode)
+{
+	m_mode = mode;
+	m_firstClick = firstClick;
+	m_constrain = false;
+	m_center = false;
+	m_hoverHandle = Handle::Invalid;
+	m_dragHandle = Handle::None;
+	m_quadStack.clear();
+	m_quadStack.append(transform->dstQuad());
+	m_quadStackTop = 0;
+}
+
 canvas::TransformModel *
 TransformTool::tryBeginMove(bool firstClick, bool onlyMask, Mode mode)
 {
@@ -429,6 +445,23 @@ TransformTool::tryBeginMove(bool firstClick, bool onlyMask, Mode mode)
 
 	canvas::SelectionModel *selection = canvas->selection();
 	if(!selection->isValid()) {
+		QSet<int> layerIds = m_owner.selectedLayers();
+		layerIds = canvas->layerlist()->topLevelSelectedIds(layerIds);
+		if(!layerIds.isEmpty()) {
+			drawdance::CanvasState canvasState =
+				canvas->paintEngine()->viewCanvasState();
+			QRect bounds;
+			for(int layerId : layerIds) {
+				bounds |= canvasState.layerBounds(layerId);
+			}
+			if(!bounds.isEmpty()) {
+				canvas::TransformModel *transform = canvas->transform();
+				transform->beginFromCanvas(bounds, QImage(), onlyMask ? QSet<int>() : layerIds);
+				setupTransform(transform, firstClick, mode);
+				return transform;
+			}
+		}
+
 		emit m_owner.showMessageRequested(QCoreApplication::translate(
 			"tools::TransformSettings",
 			"Nothing selected that could be transformed."));
@@ -440,15 +473,7 @@ TransformTool::tryBeginMove(bool firstClick, bool onlyMask, Mode mode)
 	transform->beginFromCanvas(
 		selection->bounds(), selection->image(),
 		onlyMask ? QSet<int>() : m_owner.selectedLayers());
-	m_mode = mode;
-	m_firstClick = firstClick;
-	m_constrain = false;
-	m_center = false;
-	m_hoverHandle = Handle::Invalid;
-	m_dragHandle = Handle::None;
-	m_quadStack.clear();
-	m_quadStack.append(transform->dstQuad());
-	m_quadStackTop = 0;
+	setupTransform(transform, firstClick, mode);
 	return transform;
 }
 

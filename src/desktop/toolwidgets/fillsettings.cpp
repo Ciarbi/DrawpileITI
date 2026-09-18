@@ -5,6 +5,7 @@
 #include "desktop/utils/widgetutils.h"
 #include "libclient/canvas/canvasmodel.h"
 #include "libclient/canvas/layerlist.h"
+#include "libclient/canvas/paintengine.h"
 #include "libclient/canvas/selectionmodel.h"
 #include "libclient/config/config.h"
 #include "libclient/tools/floodfill.h"
@@ -13,6 +14,9 @@
 #include "ui_fillsettings.h"
 #include <QAction>
 #include <QButtonGroup>
+#include <QComboBox>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QIcon>
 #include <QLabel>
 #include <QMenu>
@@ -35,13 +39,13 @@ static const ToolProperties::RangedValue<int> expand{
 	blendMode{
 		QStringLiteral("blendMode"), DP_BLEND_MODE_NORMAL, 0,
 		DP_BLEND_MODE_MAX},
-	size{QStringLiteral("limit"), 5000, 10, 5000},
-	opacity{QStringLiteral("opacity"), 100, 1, 100},
-	gap{QStringLiteral("gap"), 0, 0, 32},
-	source{QStringLiteral("source"), 2, 0, 3},
-	area{QStringLiteral("area"), 0, 0, 2},
-	kernel{QStringLiteral("kernel"), 0, 0, 1};
-static const ToolProperties::RangedValue<double> tolerance{
+size{QStringLiteral("limit"), 5000, 10, 5000},
+		opacity{QStringLiteral("opacity"), 100, 1, 100},
+		gap{QStringLiteral("gap"), 0, 0, 32},
+		source{QStringLiteral("source"), 2, 0, 3},
+		area{QStringLiteral("area"), 0, 0, 2},
+		kernel{QStringLiteral("kernel"), 0, 0, 1};
+	static const ToolProperties::RangedValue<double> tolerance{
 	QStringLiteral("tolerance"), 0.0, 0.0, 1.0};
 }
 
@@ -111,6 +115,47 @@ QWidget *FillSettings::createUiWidget(QWidget *parent)
 	utils::setWidgetRetainSizeWhenHidden(m_ui->sourceDummyCombo, true);
 	m_ui->sourceDummyCombo->hide();
 	utils::setWidgetRetainSizeWhenHidden(m_ui->sourceFillSource, true);
+
+	m_textureSourceCombo = m_ui->textureSourceCombo;
+	m_textureLayerCombo = m_ui->textureLayerCombo;
+	m_textureBrowseButton = m_ui->textureBrowseButton;
+	m_textureFileLabel = m_ui->textureFileLabel;
+	connect(
+		m_textureBrowseButton, &QPushButton::clicked, this,
+		&FillSettings::browseTextureImage);
+	connect(
+		m_textureLayerCombo,
+		QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+		[this](int index) {
+			m_textureLayerId = m_textureLayerCombo->itemData(index).toInt();
+			updateSettings();
+		});
+	connect(
+		controller(), &ToolController::activeLayerChanged, this,
+		&FillSettings::updateTextureLayerCombo);
+	connect(
+		controller(), &ToolController::modelChanged, this,
+		&FillSettings::updateTextureLayerCombo);
+	if(canvas::CanvasModel *canvas = controller()->model()) {
+		connect(
+			canvas->layerlist(), &canvas::LayerListModel::layersChanged, this,
+			&FillSettings::updateTextureLayerCombo);
+	}
+	connect(
+		m_textureSourceCombo,
+		QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+		[this](int) {
+			m_textureBrowseButton->setVisible(
+				m_textureSourceCombo->currentIndex() ==
+				int(FloodFill::FillTextureSource::Image));
+			updateTextureComboDisplay();
+			updateSettings();
+		});
+	m_textureBrowseButton->setVisible(
+		m_textureSourceCombo->currentIndex() ==
+		int(FloodFill::FillTextureSource::Image));
+	updateTextureComboDisplay();
+	updateTextureLayerCombo();
 
 	m_sourceGroup = new QButtonGroup(this);
 	m_sourceGroup->setExclusive(true);
@@ -266,6 +311,28 @@ void FillSettings::pushSettings()
 	FloodFill *tool =
 		static_cast<FloodFill *>(controller()->getTool(Tool::FLOODFILL));
 	int size = m_ui->size->value();
+	int textureIndex = m_textureSourceCombo->currentIndex();
+	FloodFill::FillTextureSource textureSource = textureIndex >= 0
+		? FloodFill::FillTextureSource(textureIndex)
+		: FloodFill::FillTextureSource::SolidColor;
+	int textureLayerId = 0;
+	QImage textureImg;
+	if(textureSource == FloodFill::FillTextureSource::Layer) {
+		textureLayerId = m_textureLayerCombo
+							 ? m_textureLayerCombo->currentData().toInt()
+							 : 0;
+		if(textureLayerId > 0 && canvas) {
+			drawdance::CanvasState canvasState =
+				canvas->paintEngine()->viewCanvasState();
+			QRect layerBounds = canvasState.layerBounds(textureLayerId);
+			if(!layerBounds.isEmpty()) {
+				textureImg = canvas->paintEngine()->getLayerImage(
+					textureLayerId, layerBounds);
+			}
+		}
+	} else if(textureSource == FloodFill::FillTextureSource::Image) {
+		textureImg = m_textureImage;
+	}
 	tool->setParameters(
 		m_toleranceBeforeDrag < 0 ? m_ui->tolerance->value()
 								  : m_toleranceBeforeDrag,
@@ -274,7 +341,8 @@ void FillSettings::pushSettings()
 		m_ui->opacity->value() / 100.0, m_ui->gap->value(),
 		FloodFill::Source(m_sourceGroup->checkedId()),
 		m_blendModeManager->getCurrentBlendMode(), FloodFill::Area(area),
-		m_editableAction->isChecked(), m_confirmAction->isChecked());
+		m_editableAction->isChecked(), m_confirmAction->isChecked(),
+		textureSource, textureImg, textureLayerId);
 
 	if(!m_ui->sourceFillSource->isEnabled() &&
 	   m_ui->sourceFillSource->isChecked()) {
@@ -321,6 +389,9 @@ void FillSettings::updateFillSourceLayerId(int layerId)
 		m_ui->sourceFillSource->click();
 	} else {
 		m_ui->sourceLayer->click();
+	}
+	if(m_textureLayerId == 0) {
+		updateTextureLayerCombo();
 	}
 }
 
@@ -483,6 +554,90 @@ void FillSettings::updateWidgets()
 		utils::ScopedUpdateDisabler disabler(m_stack);
 		m_stack->setCurrentIndex(m_featureAccess ? 0 : 1);
 		m_permissionDeniedLabel->setVisible(!m_featureAccess);
+	}
+}
+
+void FillSettings::updateTextureComboDisplay()
+{
+	bool isLayerTexture = m_textureSourceCombo->currentIndex() ==
+						  int(FloodFill::FillTextureSource::Layer);
+	m_ui->textureLayerLabel->setVisible(isLayerTexture);
+	m_ui->textureLayerCombo->setVisible(isLayerTexture);
+	m_ui->textureLayerCombo->setEnabled(
+		isLayerTexture && m_ui->textureLayerCombo->count() > 0);
+	if(m_textureSourceCombo->currentIndex() ==
+	   int(FloodFill::FillTextureSource::Image)) {
+		QString filename = QFileInfo(m_textureImagePath).fileName();
+		if(filename.isEmpty()) {
+			m_textureFileLabel->setText(tr("(none selected)"));
+		} else {
+			QFontMetrics fm(m_textureFileLabel->font());
+			m_textureFileLabel->setText(
+				fm.elidedText(filename, Qt::ElideMiddle, 230));
+		}
+		m_textureFileLabel->setToolTip(m_textureImagePath);
+	} else {
+		m_textureFileLabel->clear();
+		m_textureFileLabel->setToolTip(QString());
+	}
+}
+
+void FillSettings::updateTextureLayerCombo()
+{
+	canvas::CanvasModel *canvas = controller()->model();
+	canvas::LayerListModel *layerlist = canvas ? canvas->layerlist() : nullptr;
+	const QVector<canvas::LayerListItem> &items =
+		layerlist ? layerlist->layerItems()
+				  : QVector<canvas::LayerListItem>{};
+	int preferredId = m_textureLayerId;
+	if(preferredId == 0) {
+		preferredId = layerlist ? layerlist->fillSourceLayerId() : 0;
+	}
+	if(preferredId == 0) {
+		preferredId = controller()->activeLayer();
+	}
+
+	QSignalBlocker blocker(m_textureLayerCombo);
+	m_textureLayerCombo->clear();
+	bool foundPreferred = false;
+	for(const canvas::LayerListItem &item : items) {
+		if(item.id > 0 && !item.group) {
+			m_textureLayerCombo->addItem(item.titleWithColor(), item.id);
+			if(item.id == preferredId) {
+				m_textureLayerCombo->setCurrentIndex(
+					m_textureLayerCombo->count() - 1);
+				foundPreferred = true;
+			}
+		}
+	}
+	if(!foundPreferred) {
+		m_textureLayerId = 0;
+		m_textureLayerCombo->addItem(tr("(none selected)"), 0);
+		m_textureLayerCombo->setCurrentIndex(0);
+	} else {
+		m_textureLayerId = preferredId;
+	}
+	updateTextureComboDisplay();
+	if(m_sourceGroup && m_areaGroup && m_blendModeManager) {
+		updateSettings();
+	}
+}
+
+void FillSettings::browseTextureImage()
+{
+	QString path = QFileDialog::getOpenFileName(
+		m_ui->textureSourceCombo->window(), tr("Select Texture Image"),
+		m_textureImagePath,
+		tr("Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"));
+	if(!path.isEmpty()) {
+		m_textureImagePath = path;
+		if(m_textureImage.load(path)) {
+			updateTextureComboDisplay();
+			updateSettings();
+		} else {
+			m_textureImagePath.clear();
+			qWarning("Failed to load texture image: %s", qUtf8Printable(path));
+		}
 	}
 }
 

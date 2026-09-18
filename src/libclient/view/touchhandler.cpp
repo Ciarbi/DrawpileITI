@@ -103,6 +103,9 @@ void TouchHandler::handleTouchBegin(QTouchEvent *event)
 	m_touchDragging = false;
 	m_touchRotating = false;
 	m_touchHeld = false;
+	m_touchStartsValid = false;
+	m_touchStartZoom = 0.0;
+	m_touchStartRotate = 0.0;
 	m_tapTimer.setRemainingTime(TAP_MAX_DELAY_MS);
 	bool isTouchPad = compat::isTouchPad(event);
 	if(!isTouchPad && isTouchDrawEnabled() && m_touchState.isSingleTouch()) {
