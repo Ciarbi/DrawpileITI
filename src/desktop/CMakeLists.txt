@@ -459,6 +459,8 @@ target_sources(drawpile PRIVATE
 	widgets/kis_slider_spin_box.h
 	widgets/KisAngleGauge.cpp
 	widgets/KisAngleGauge.h
+	widgets/largeiconmenu.cpp
+	widgets/largeiconmenu.h
 	widgets/mypaintinput.cpp
 	widgets/mypaintinput.h
 	widgets/netstatus.cpp

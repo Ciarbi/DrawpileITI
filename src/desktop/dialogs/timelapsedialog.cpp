@@ -34,6 +34,8 @@ extern "C" {
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QSplitter>
+#include <QStackedWidget>
 #include <QThreadPool>
 #include <QVBoxLayout>
 #include <QtColorWidgets/ColorPreview>
@@ -62,21 +64,25 @@ TimelapseDialog::TimelapseDialog(
 	QVBoxLayout *layout = new QVBoxLayout;
 	setLayout(layout);
 
+	QSplitter *splitter = new QSplitter(Qt::Vertical);
+	layout->addWidget(splitter, 1);
+
+	m_timelapsePreview = new widgets::TimelapsePreview;
+	m_timelapsePreview->setMinimumHeight(100);
+	splitter->addWidget(m_timelapsePreview);
+
 	m_scroll = new QScrollArea;
 	m_scroll->setContentsMargins(0, 0, 0, 0);
-	utils::KineticScroller *kineticScroller =
-		utils::bindKineticScrolling(m_scroll);
-	layout->addWidget(m_scroll, 1);
+	utils::KineticScroller *kineticScroller = utils::bindKineticScrollingWith(
+		m_scroll, Qt::ScrollBarAsNeeded, Qt::ScrollBarAlwaysOn);
+	splitter->addWidget(m_scroll);
 
 	QWidget *scrollWidget = new QWidget;
 	m_scroll->setWidget(scrollWidget);
 	m_scroll->setWidgetResizable(true);
 
 	QVBoxLayout *scrollLayout = new QVBoxLayout(scrollWidget);
-
-	m_timelapsePreview = new widgets::TimelapsePreview;
-	m_timelapsePreview->setFixedHeight(280);
-	scrollLayout->addWidget(m_timelapsePreview);
+	scrollLayout->setSpacing(0);
 
 	m_settingsPage = new QWidget;
 	m_progressPage = new QWidget;
@@ -90,6 +96,7 @@ TimelapseDialog::TimelapseDialog(
 	scrollLayout->addWidget(m_settingsPage);
 	scrollLayout->addWidget(m_progressPage);
 	scrollLayout->addWidget(m_finishPage);
+	scrollLayout->addStretch();
 
 	QVBoxLayout *settingsLayout = new QVBoxLayout(m_settingsPage);
 	settingsLayout->setContentsMargins(0, 0, 0, 0);
@@ -202,9 +209,18 @@ TimelapseDialog::TimelapseDialog(
 		m_formatCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 		this, &TimelapseDialog::updateFormat);
 
-	QHBoxLayout *durationLayout = new QHBoxLayout;
+	m_durationSpeedLabelStack = new QStackedWidget();
+	m_durationSpeedContentStack = new QStackedWidget();
+	settingsForm->addRow(
+		m_durationSpeedLabelStack, m_durationSpeedContentStack);
+
+	QWidget *durationWidget = new QWidget;
+	durationWidget->setContentsMargins(0, 0, 0, 0);
+	m_durationSpeedLabelStack->addWidget(new QLabel(tr("Duration:")));
+	m_durationSpeedContentStack->addWidget(durationWidget);
+
+	QHBoxLayout *durationLayout = new QHBoxLayout(durationWidget);
 	durationLayout->setContentsMargins(0, 0, 0, 0);
-	settingsForm->addRow(tr("Duration:"), durationLayout);
 
 	m_minutesSpinner = new widgets::NoScrollKisSliderSpinBox;
 	m_minutesSpinner->setIndeterminate(true);
@@ -236,6 +252,12 @@ TimelapseDialog::TimelapseDialog(
 
 	QMenu *durationMenu = new QMenu;
 	durationButton->setMenu(durationMenu);
+
+	QAction *speedSwitchAction = durationMenu->addAction(tr("Switch to speed"));
+	connect(
+		speedSwitchAction, &QAction::triggered, this,
+		&TimelapseDialog::switchToSpeed);
+
 	durationMenu->addSection(tr("Duration presets:"));
 
 	for(int seconds : {30, 45, 60, 90, 120, 150, 180, 300, 600}) {
@@ -243,6 +265,48 @@ TimelapseDialog::TimelapseDialog(
 		connect(
 			action, &QAction::triggered, this,
 			std::bind(&TimelapseDialog::setDurationSeconds, this, seconds));
+	}
+
+	QWidget *speedWidget = new QWidget;
+	durationWidget->setContentsMargins(0, 0, 0, 0);
+	m_durationSpeedLabelStack->addWidget(new QLabel(tr("Speed:")));
+	m_durationSpeedContentStack->addWidget(speedWidget);
+
+	QHBoxLayout *speedLayout = new QHBoxLayout(speedWidget);
+	speedLayout->setContentsMargins(0, 0, 0, 0);
+
+	m_speedSpinner = new widgets::NoScrollKisSliderSpinBox;
+	m_speedSpinner->setRange(1, 999999);
+	m_speedSpinner->setExponentRatio(3.0);
+	m_speedSpinner->setSuffix(QStringLiteral("%"));
+	speedLayout->addWidget(m_speedSpinner, 1);
+	kineticScroller->disableKineticScrollingOnWidget(m_speedSpinner);
+
+	widgets::GroupedToolButton *speedButton =
+		new widgets::GroupedToolButton(widgets::GroupedToolButton::NotGrouped);
+	speedButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+	speedButton->setIcon(QIcon::fromTheme(QStringLiteral("application-menu")));
+	speedButton->setPopupMode(QToolButton::InstantPopup);
+	speedLayout->addWidget(speedButton);
+
+	QMenu *speedMenu = new QMenu;
+	speedButton->setMenu(speedMenu);
+
+	QAction *durationSwitchAction =
+		speedMenu->addAction(tr("Switch to duration"));
+	connect(
+		durationSwitchAction, &QAction::triggered, this,
+		&TimelapseDialog::switchToDuration);
+
+	speedMenu->addSection(tr("Speed presets:"));
+
+	for(int speed : {1, 10, 100, 1000}) {
+		QAction *action =
+			speedMenu->addAction(QStringLiteral("%1x").arg(speed));
+		connect(
+			action, &QAction::triggered, m_speedSpinner,
+			std::bind(
+				&KisSliderSpinBox::setValue, m_speedSpinner, speed * 100));
 	}
 
 	m_widthSpinner = new widgets::NoScrollKisSliderSpinBox;
@@ -472,8 +536,8 @@ TimelapseDialog::TimelapseDialog(
 
 	m_logoOffsetXSlider = new widgets::NoScrollKisDoubleSliderSpinBox;
 	m_logoOffsetYSlider = new widgets::NoScrollKisDoubleSliderSpinBox;
-	m_logoOffsetXSlider->setRange(0.0, 0.5, 3);
-	m_logoOffsetYSlider->setRange(0.0, 0.5, 3);
+	m_logoOffsetXSlider->setRange(0.0, 50.0, 3);
+	m_logoOffsetYSlider->setRange(0.0, 50.0, 3);
 	m_logoOffsetXSlider->setSingleStep(0.01);
 	m_logoOffsetYSlider->setSingleStep(0.01);
 
@@ -484,6 +548,9 @@ TimelapseDialog::TimelapseDialog(
 	logoOffsetLayout->addWidget(m_logoOffsetYSlider, 1);
 	kineticScroller->disableKineticScrollingOnWidget(m_logoOffsetXSlider);
 	kineticScroller->disableKineticScrollingOnWidget(m_logoOffsetYSlider);
+	connect(
+		m_timelapsePreview, &widgets::TimelapsePreview::logoMoved, this,
+		&TimelapseDialog::updateLogoOffsetsFromPreview);
 
 	advancedForm->addRow(tr("Logo padding:"), logoOffsetLayout);
 	connect(
@@ -625,6 +692,11 @@ TimelapseDialog::TimelapseDialog(
 	m_progressBar = new QProgressBar;
 	progressLayout->addWidget(m_progressBar);
 
+	m_timingLabel = new QLabel;
+	m_timingLabel->setAlignment(Qt::AlignCenter);
+	m_timingLabel->setWordWrap(true);
+	progressLayout->addWidget(m_timingLabel);
+
 	progressLayout->addStretch();
 
 	QVBoxLayout *finishLayout = new QVBoxLayout(m_finishPage);
@@ -640,6 +712,15 @@ TimelapseDialog::TimelapseDialog(
 
 	m_buttons = new QDialogButtonBox();
 	layout->addWidget(m_buttons);
+
+	splitter->setCollapsible(0, true);
+	splitter->setCollapsible(1, false);
+	splitter->setStretchFactor(0, 0);
+	splitter->setStretchFactor(1, 1);
+	if(splitter->handleWidth() < 12) {
+		splitter->setHandleWidth(12);
+	}
+	splitter->setSizes({280, 2000});
 
 	updatePreviewCanvas();
 	showSettingsPage();
@@ -695,7 +776,16 @@ void TimelapseDialog::accept()
 			bool lingerAnimation = m_animationResultCheckBox &&
 								   m_animationResultCheckBox->isChecked();
 			double flashSeconds = m_flashSlider->value();
-			double playbackSeconds = getDurationSeconds() - flashSeconds;
+
+			bool usingDuration =
+				m_durationSpeedContentStack->currentIndex() != SPEED_PAGE_INDEX;
+			double playbackSecondsOrSpeed;
+			if(usingDuration) {
+				playbackSecondsOrSpeed = getDurationSeconds() - flashSeconds;
+			} else {
+				playbackSecondsOrSpeed =
+					double(m_speedSpinner->value()) / -100.0;
+			}
 
 			double lingerBeforeSeconds, lingerAfterSeconds;
 			int lingerBeforeLoops, lingerAfterLoops;
@@ -718,11 +808,13 @@ void TimelapseDialog::accept()
 					animationFramerate = m_animationFramerate;
 				}
 
-				int frames = frameRangeLast - frameRangeFirst + 1;
-				playbackSeconds -=
-					qreal(lingerBeforeLoops * frames) / animationFramerate;
-				playbackSeconds -=
-					qreal(lingerAfterLoops * frames) / animationFramerate;
+				if(usingDuration) {
+					int frames = frameRangeLast - frameRangeFirst + 1;
+					playbackSecondsOrSpeed -=
+						double(lingerBeforeLoops * frames) / animationFramerate;
+					playbackSecondsOrSpeed -=
+						double(lingerAfterLoops * frames) / animationFramerate;
+				}
 			} else {
 				lingerBeforeSeconds = m_lingerBeforeSlider->value();
 				lingerAfterSeconds = m_lingerAfterSlider->value();
@@ -731,12 +823,14 @@ void TimelapseDialog::accept()
 				frameRangeFirst = -1;
 				frameRangeLast = -2;
 				animationFramerate = 0.0;
-				playbackSeconds -= lingerBeforeSeconds;
-				playbackSeconds -= lingerAfterSeconds;
+				if(usingDuration) {
+					playbackSecondsOrSpeed -= lingerBeforeSeconds;
+					playbackSecondsOrSpeed -= lingerAfterSeconds;
+				}
 			}
 
-			if(playbackSeconds < 1.0) {
-				playbackSeconds = 1.0;
+			if(usingDuration && playbackSecondsOrSpeed < 1.0) {
+				playbackSecondsOrSpeed = 1.0;
 			}
 
 			const config::Config *cfg = dpAppConfig();
@@ -751,7 +845,7 @@ void TimelapseDialog::accept()
 				m_flashPreview->color(), getLogoRect(),
 				double(m_logoOpacitySlider->value()) / 100.0, getLogoImage(),
 				m_framerateSlider->value(), lingerBeforeSeconds,
-				playbackSeconds, flashSeconds, lingerAfterSeconds,
+				playbackSecondsOrSpeed, flashSeconds, lingerAfterSeconds,
 				m_maxDeltaSlider->value(), m_maxQueueEntriesSlider->value(),
 				m_ownCheckBox->isChecked(), lingerBeforeLoops, lingerAfterLoops,
 				frameRangeFirst, frameRangeLast, animationFramerate);
@@ -777,6 +871,15 @@ void TimelapseDialog::accept()
 			connect(
 				m_saver, &TimelapseSaverRunnable::saveFailed, this,
 				&TimelapseDialog::handleSaveFailed, Qt::QueuedConnection);
+
+			if(usingDuration) {
+				m_timingLabel->setText(QString());
+			} else {
+				connect(
+					m_saver, &TimelapseSaverRunnable::durationCalculated, this,
+					&TimelapseDialog::updateTimingLabel, Qt::QueuedConnection);
+				m_timingLabel->setText(tr("Calculating video duration…"));
+			}
 
 			m_cancelling = false;
 			m_progressLabel->setText(tr("Starting export…"));
@@ -900,6 +1003,7 @@ void TimelapseDialog::resetToDefaultSettings()
 	updateCurrentResolution();
 	resetDefaultExportFormat();
 	setDurationSeconds(config::Config::defaultTimelapseDurationSeconds());
+	m_speedSpinner->setValue(config::Config::defaultTimelapseSpeedPercent());
 	if(!checkLogoLocation(config::Config::defaultTimelapseLogoLocation())) {
 		checkLogoLocation(int(LogoLocation::Default));
 	}
@@ -915,9 +1019,9 @@ void TimelapseDialog::resetToDefaultSettings()
 	QSignalBlocker logoOffsetXBlocker(m_logoOffsetXSlider);
 	QSignalBlocker logoOffsetYBlocker(m_logoOffsetYSlider);
 	m_logoOffsetXSlider->setValue(
-		config::Config::defaultTimelapseLogoOffsetX());
+		config::Config::defaultTimelapseLogoOffsetX() * 100.0);
 	m_logoOffsetYSlider->setValue(
-		config::Config::defaultTimelapseLogoOffsetY());
+		config::Config::defaultTimelapseLogoOffsetY() * 100.0);
 	QSignalBlocker logoOpacityBlocker(m_logoOpacitySlider);
 	m_logoOpacitySlider->setValue(
 		config::Config::defaultTimelapseLogoOpacity());
@@ -946,6 +1050,7 @@ void TimelapseDialog::resetToDefaultSettings()
 		updateAnimation();
 	}
 
+	switchDurationSpeed(config::Config::defaultTimelapseDurationSpeedMode());
 	updateLogoRect();
 	updateLogoOpacity(m_logoOpacitySlider->value());
 	updateFramerateNote();
@@ -984,6 +1089,7 @@ void TimelapseDialog::loadSettings()
 		resetDefaultExportFormat();
 	}
 	setDurationSeconds(cfg->getTimelapseDurationSeconds());
+	m_speedSpinner->setValue(cfg->getTimelapseSpeedPercent());
 	if(!checkLogoLocation(cfg->getTimelapseLogoLocation())) {
 		checkLogoLocation(int(LogoLocation::Default));
 	}
@@ -997,8 +1103,8 @@ void TimelapseDialog::loadSettings()
 	m_logoScaleSlider->setValue(cfg->getTimelapseLogoScale());
 	QSignalBlocker logoOffsetXBlocker(m_logoOffsetXSlider);
 	QSignalBlocker logoOffsetYBlocker(m_logoOffsetYSlider);
-	m_logoOffsetXSlider->setValue(cfg->getTimelapseLogoOffsetX());
-	m_logoOffsetYSlider->setValue(cfg->getTimelapseLogoOffsetY());
+	m_logoOffsetXSlider->setValue(cfg->getTimelapseLogoOffsetX() * 100.0);
+	m_logoOffsetYSlider->setValue(cfg->getTimelapseLogoOffsetY() * 100.0);
 	QSignalBlocker logoOpacityBlocker(m_logoOpacitySlider);
 	m_logoOpacitySlider->setValue(cfg->getTimelapseLogoOpacity());
 	m_lingerBeforeSlider->setValue(cfg->getTimelapseLingerBeforeSeconds());
@@ -1019,6 +1125,7 @@ void TimelapseDialog::loadSettings()
 		updateAnimation();
 	}
 
+	switchDurationSpeed(cfg->getTimelapseDurationSpeedMode());
 	updateLogoRect();
 	updateLogoOpacity(m_logoOpacitySlider->value());
 	updateFramerateNote();
@@ -1030,14 +1137,17 @@ void TimelapseDialog::saveSettings()
 	cfg->setTimelapsePreferredEncoders(m_preferredEncoders);
 	cfg->setTimelapseExportFormat(m_formatCombo->currentData().toInt());
 	cfg->setTimelapseDurationSeconds(getDurationSeconds());
+	cfg->setTimelapseSpeedPercent(m_speedSpinner->value());
+	cfg->setTimelapseDurationSpeedMode(
+		m_durationSpeedContentStack->currentIndex());
 	cfg->setTimelapseLogoLocation(m_logoLocationGroup->checkedId());
 	cfg->setTimelapseShowAdvanced(m_advancedWidget->isEnabled());
 	cfg->setTimelapseInterpolation(m_interpolationCombo->currentData().toInt());
 	cfg->setTimelapseTimeOwnOnly(m_ownCheckBox->isChecked());
 	cfg->setTimelapseBackdropColor(m_backdropPreview->color());
 	cfg->setTimelapseLogoScale(m_logoScaleSlider->value());
-	cfg->setTimelapseLogoOffsetX(m_logoOffsetXSlider->value());
-	cfg->setTimelapseLogoOffsetY(m_logoOffsetYSlider->value());
+	cfg->setTimelapseLogoOffsetX(m_logoOffsetXSlider->value() / 100.0);
+	cfg->setTimelapseLogoOffsetY(m_logoOffsetYSlider->value() / 100.0);
 	cfg->setTimelapseLogoOpacity(m_logoOpacitySlider->value());
 	cfg->setTimelapseLingerBeforeSeconds(m_lingerBeforeSlider->value());
 	cfg->setTimelapseFlashColor(m_flashPreview->color());
@@ -1109,6 +1219,27 @@ void TimelapseDialog::setDurationSeconds(int seconds)
 {
 	m_minutesSpinner->setValue(seconds / 60);
 	m_secondsSpinner->setValue(seconds % 60);
+}
+
+void TimelapseDialog::switchToSpeed()
+{
+	switchDurationSpeed(SPEED_PAGE_INDEX);
+}
+
+void TimelapseDialog::switchToDuration()
+{
+	switchDurationSpeed(DURATION_PAGE_INDEX);
+}
+
+void TimelapseDialog::switchDurationSpeed(int page)
+{
+	int effectivePage = qBound(
+		0, page,
+		qMin(
+			m_durationSpeedLabelStack->count(),
+			m_durationSpeedContentStack->count()));
+	m_durationSpeedLabelStack->setCurrentIndex(effectivePage);
+	m_durationSpeedContentStack->setCurrentIndex(effectivePage);
 }
 
 void TimelapseDialog::updateFormat()
@@ -1276,6 +1407,48 @@ void TimelapseDialog::updateLogoOpacity(int opacity)
 	m_timelapsePreview->setLogoOpacity(double(opacity) / 100.0);
 }
 
+void TimelapseDialog::updateLogoOffsetsFromPreview(const QRect &r)
+{
+	QRect outputRect = QRect(QPoint(0, 0), getOutputSize());
+	if(!outputRect.isEmpty()) {
+		int leftDistance = qMax(0, r.left() - outputRect.left());
+		int rightDistance = qMax(0, outputRect.right() - r.right());
+		int topDistance = qMax(0, r.top() - outputRect.top());
+		int bottomDistance = qMax(0, outputRect.bottom() - r.bottom());
+
+		LogoLocation location;
+		if(leftDistance <= rightDistance) {
+			if(topDistance <= bottomDistance) {
+				location = LogoLocation::TopLeft;
+			} else {
+				location = LogoLocation::BottomLeft;
+			}
+		} else {
+			if(topDistance <= bottomDistance) {
+				location = LogoLocation::TopRight;
+			} else {
+				location = LogoLocation::BottomRight;
+			}
+		}
+
+		QAbstractButton *button = m_logoLocationGroup->button(int(location));
+		if(button) {
+			button->setChecked(true);
+		}
+
+		QSignalBlocker offsetXBlocker(m_logoOffsetXSlider);
+		m_logoOffsetXSlider->setValue(
+			qMin(leftDistance, rightDistance) / qreal(outputRect.width()) *
+			100.0);
+
+		QSignalBlocker offsetYBlocker(m_logoOffsetYSlider);
+		m_logoOffsetYSlider->setValue(
+			qMin(topDistance, bottomDistance) / qreal(outputRect.height()) *
+			100.0);
+	}
+	updateLogoRect();
+}
+
 void TimelapseDialog::updatePreviewSize()
 {
 	m_timelapsePreview->setOutputSize(getOutputSize());
@@ -1362,8 +1535,8 @@ QRect TimelapseDialog::getLogoRect()
 		if(!logoSize.isEmpty()) {
 			QRect outputRect(QPoint(0, 0), outputSize);
 			QRect logoRect(QPoint(0, 0), logoSize);
-			qreal logoOffsetRatioX = m_logoOffsetXSlider->value();
-			qreal logoOffsetRatioY = m_logoOffsetYSlider->value();
+			qreal logoOffsetRatioX = m_logoOffsetXSlider->value() / 100.0;
+			qreal logoOffsetRatioY = m_logoOffsetYSlider->value() / 100.0;
 			int offsetX = qRound(outputSize.width() * logoOffsetRatioX);
 			int offsetY = qRound(outputSize.height() * logoOffsetRatioY);
 
@@ -1621,6 +1794,16 @@ void TimelapseDialog::updateProgressLabel(const QString &message)
 {
 	if(!m_cancelling) {
 		m_progressLabel->setText(message);
+	}
+}
+
+void TimelapseDialog::updateTimingLabel(double totalSeconds)
+{
+	if(!m_cancelling) {
+		m_timingLabel->setText(
+			//: %1 is a time, something like "1 minute, 30 seconds"
+			tr("Video duration: %1")
+				.arg(utils::formatTime(qRound64(totalSeconds))));
 	}
 }
 

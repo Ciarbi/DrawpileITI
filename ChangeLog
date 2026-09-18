@@ -56,6 +56,11 @@ Unreleased Version 2.3.1-pre
  * Feature: Warn about closing the browser tab too quickly after saving, since several browers will truncate the target file to 0 bytes and then write to a temporary file, leaving you with the former if you exit too quickly.
  * Feature: The browser pressure tester now shows the pressure value and lets you toggle whether to optimize for low-pressure styluses like Apple Pencils, in case it doesn't get detected automatically.
  * Server Feature: Tell the user how many hours or minutes remain on their ban if it expires in less than 3 days, since giving just a date can make it confusing with regards to time zones. Thanks Bluestrings for suggesting.
+ * Feature: Allow switching timelapses to be speed-based instead of duration-based. It will calculate the video duration from the given speed. Thanks xxxx for suggesting.
+ * Fix: When saving an ORA file with clipping groups, the animation timeline's frame assignments no longer get garbled. Thanks BluesFlying for reporting.
+ * Fix: Solve an issue where on some systems you would get disconnected on the first attempt of joining a session and then it worked fine on reconnect. This fix was already applied on Android, but aparently it also rarely happens elsewhere. Thanks Greendyno for reporting.
+ * Feature: Replace the New and Open buttons in the toolbar with a menu that has all the common file actions. Thanks tysontan for suggesting.
+ * Feature: Allow dragging the logo in the timelapse dialog, rather than having to fiddle with the padding sliders.
 
 2026-05-16 Version 2.3.1-beta.1
  * Fix: Force canvas view dimensions to be even on hardware renderers, since otherwise the view gets scrunched on some graphics cards.
