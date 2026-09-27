@@ -100,6 +100,12 @@ void ActivityBroadcast::sendActiveTool(int type)
 	case tools::Tool::Type::BEZIER:
 		name = QStringLiteral("bezier");
 		break;
+	case tools::Tool::Type::TRIANGLE:
+		name = QStringLiteral("triangle");
+		break;
+	case tools::Tool::Type::DIAMOND:
+		name = QStringLiteral("diamond");
+		break;
 	case tools::Tool::Type::FLOODFILL:
 		name = QStringLiteral("floodfill");
 		break;

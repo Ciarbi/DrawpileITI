@@ -1995,6 +1995,12 @@ void CanvasControllerBase::touchPressEvent(
 {
 	Q_UNUSED(event);
 	setCursorPos(posf);
+	// Reposition the brush/eraser outline (size circle) to the touch point on
+	// press, mirroring penMoveEvent. Without this the outline stays where the
+	// mouse cursor last was until the first touch move, which makes touch
+	// drawing appear to "stick" to the mouse pointer.
+	updateOutlinePos(mapPointToCanvasF(posf));
+	updateOutline();
 	penPressEvent(
 		timeMsec, posf, globalPos, pressure, 0.0, 0.0, 0.0, Qt::LeftButton,
 		Qt::NoModifier, int(tools::DeviceType::Touch), false);
