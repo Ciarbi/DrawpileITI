@@ -1274,6 +1274,21 @@ if(${QT_PACKAGE_NAME}LinguistTools_FOUND)
 				COMMENT "Creating symlink to i18n bundles in build directory"
 				VERBATIM
 			)
+		elseif(SOURCE_ASSETS)
+			# On Linux/macOS dev builds (SOURCE_ASSETS=ON) the runtime data
+			# path is the source assets directory (src/desktop/assets), so the
+			# generated translation bundles must be reachable from there. Link
+			# the build-time bundle directory into assets/i18n so QTranslator
+			# finds all_${lang}.qm without requiring `cmake --install`.
+			add_custom_command(
+				TARGET drawpile PRE_LINK
+				COMMAND "${CMAKE_COMMAND}" -E create_symlink
+					"${CMAKE_CURRENT_BINARY_DIR}/i18n-bundle"
+					"${CMAKE_CURRENT_SOURCE_DIR}/assets/i18n"
+				COMMAND_EXPAND_LISTS
+				COMMENT "Linking i18n bundles into source assets directory"
+				VERBATIM
+			)
 		endif()
 
 		# Assets will be installed by Gradle on Android and are bundled on WASM.

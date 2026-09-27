@@ -35,3 +35,4 @@ compile_commands.json
 
 # NPM modules
 node_modules/
+src/desktop/assets/i18n

@@ -227,6 +227,13 @@ void TouchHandler::handleTouchUpdate(
 			if(shouldAppend) {
 				m_touchDrawBuffer.append(
 					{QDateTime::currentMSecsSinceEpoch(), posf, pressure});
+				// Still feed the latest touch position to the controller so the
+				// brush cursor and outline track the finger during the
+				// disambiguation window. Pen is still up at this point (penDown
+				// is only emitted when the buffer flushes), so this routes into
+				// the penHover branch and doesn't produce any ink.
+				emit touchMoved(
+					QDateTime::currentMSecsSinceEpoch(), posf, pressure);
 			} else {
 				stopTapAndHoldTimer();
 				flushBufferedOneFingerSingleTap();

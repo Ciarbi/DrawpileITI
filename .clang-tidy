@@ -1,1 +1,11 @@
-Checks: "-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling"
+Checks: >
+  modernize-use-override,
+  modernize-use-equals-default,
+  modernize-use-equals-delete,
+  readability-else-after-return,
+  readability-implicit-bool-conversion,
+  bugprone-narrowing-explicit-conversions,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+HeaderFilterRegex: 'src/(libclient|libserver|libshared|desktop|thinsrv|tools)/'
+SystemHeaders: false
+FormatStyle: file

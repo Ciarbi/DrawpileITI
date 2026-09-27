@@ -745,6 +745,14 @@ jobs:
         working-directory: build
         if: '!matrix.cross_os'
 
+      - name: Validate translation files
+        # Advisory only: catches placeholder (%1..) mismatches between source
+        # and translations. Newly enabled, so it still reports pre-existing
+        # issues; make this blocking once the backlog is cleaned up.
+        continue-on-error: true
+        run: python3 cmake/validate-translations.py
+        shell: bash
+
       - name: Install WIX toolkit missing on ARM64 Windows runner
         run: |
           choco install wixtoolset --version 3.14.1.20250415
