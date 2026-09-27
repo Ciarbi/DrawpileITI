@@ -311,7 +311,6 @@ private slots:
 #endif
 	void openDebugDump();
 #ifndef __EMSCRIPTEN__
-	void convertRecordings();
 	dialogs::ProjectEditDialog *showProjectEditDialog();
 	void openEditedProject(const QString &path);
 #endif
@@ -541,6 +540,7 @@ private:
 	void deactivateAllDocks();
 	void prepareDockTabUpdate();
 	void updateDockTabs();
+	void forceUpdateDockTabs();
 
 #ifndef __EMSCRIPTEN__
 	bool saveAsType(int saveImageType, bool force);

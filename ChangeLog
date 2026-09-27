@@ -1,4 +1,11 @@
 Unreleased Version 2.3.1-pre
+ * Fix: Make dock tab icons show up properly on Qt 6.11, they could end up blank there.
+ * Fix: Don't skip initial command when playing back recordings. This caused the canvas size command to be skipped on old converted recordings, meaning its size stayed at zero and nothing would play. Thanks dango for reporting.
+ * Server Feature: Allow new sessions to clobber empty, non-persistent, lingering sessions. Server owners can enable this to prevent "server is full" errors that would resolve themselves by waiting a few minutes for these lingering sessions to time out. Sessions with the lowest time spent drawing are terminated first. Thanks Bluestrings for suggesting.
+ * Fix: Make hitting "save" after joining a session in the same window not save over the save file from a previous session in the same window. Unless you are reconnecting to the same session, in which case it will save over the file as it should. The logic for this was reversed from what it should be. Thanks Bonbli and D'mitri for reporting.
+ * Fix: Also select layers when multiple key frames are selected.
+
+2026-09-22 Version 2.3.1-beta.2
  * Fix: Make ratchet rotation canvas shortcut work properly when the canvas is mirrored or flipped. Thanks Bovy for reporting.
  * Fix: Make default filename use *months* as the second number, not *minutes*. Thanks hipofiz for reporting.
  * Fix: Allow dragging initial curve tool point to let you change its control point again. Thanks Astre for reporting.
@@ -59,7 +66,7 @@ Unreleased Version 2.3.1-pre
  * Feature: Allow switching timelapses to be speed-based instead of duration-based. It will calculate the video duration from the given speed. Thanks xxxx for suggesting.
  * Fix: When saving an ORA file with clipping groups, the animation timeline's frame assignments no longer get garbled. Thanks BluesFlying for reporting.
  * Fix: Solve an issue where on some systems you would get disconnected on the first attempt of joining a session and then it worked fine on reconnect. This fix was already applied on Android, but aparently it also rarely happens elsewhere. Thanks Greendyno for reporting.
- * Feature: Replace the New and Open buttons in the toolbar with a menu that has all the common file actions. Thanks tysontan for suggesting.
+ * Feature: Replace the New and Open buttons in the toolbar with a menu that has common file actions and repeats the top menu bar for systems where that's annoying to access. Thanks tysontan for suggesting.
  * Feature: Allow dragging the logo in the timelapse dialog, rather than having to fiddle with the padding sliders.
 
 2026-05-16 Version 2.3.1-beta.1

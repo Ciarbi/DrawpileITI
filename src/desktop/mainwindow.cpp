@@ -518,9 +518,14 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 		m_doc->toolCtrl(), &tools::ToolController::setSelectedLayers);
 	connect(m_dockLayers, &docks::LayerList::layerSelected, m_dockTimeline, &docks::Timeline::setCurrentLayer);
 	connect(m_dockTimeline, &docks::Timeline::layerSelected, m_dockLayers, &docks::LayerList::selectLayer);
+	// clang-format on
 	connect(
 		m_dockTimeline, &docks::Timeline::blankLayerSelected, m_dockLayers,
 		&docks::LayerList::clearLayerSelection);
+	connect(
+		m_dockTimeline, &docks::Timeline::layersChecked, m_dockLayers,
+		&docks::LayerList::setCheckedLayers);
+	// clang-format off
 	connect(m_doc->toolCtrl(), &tools::ToolController::activeAnnotationChanged,
 			m_dockToolSettings->annotationSettings(), &tools::AnnotationSettings::setSelectionId);
 	connect(
@@ -3147,11 +3152,6 @@ void MainWindow::openDebugDumpPath(
 }
 
 #ifndef __EMSCRIPTEN__
-void MainWindow::convertRecordings()
-{
-	showProjectEditDialog()->promptForInputFiles();
-}
-
 dialogs::ProjectEditDialog *MainWindow::showProjectEditDialog()
 {
 	QString objectName = QStringLiteral("projecteditdialog");
@@ -6926,7 +6926,7 @@ void MainWindow::setupActions()
 #ifndef __EMSCRIPTEN__
 	connect(
 		importRecordings, &QAction::triggered, this,
-		&MainWindow::convertRecordings);
+		&MainWindow::showProjectEditDialog);
 #endif
 	connect(
 		exportBrushes, &QAction::triggered, m_dockBrushPalette,
@@ -7056,10 +7056,10 @@ void MainWindow::setupActions()
 	QToolButton *commonMenuButton = new QToolButton;
 	commonMenuButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
 	commonMenuButton->setPopupMode(QToolButton::InstantPopup);
-	commonMenuButton->setToolTip(tr("File"));
+	commonMenuButton->setToolTip(tr("Menu"));
 	commonMenuButton->setStatusTip(commonMenuButton->toolTip());
 	commonMenuButton->setIcon(
-		QIcon::fromTheme(QStringLiteral("document-open-folder")));
+		QIcon::fromTheme(QStringLiteral("application-menu")));
 	m_toolBarFile->addWidget(commonMenuButton);
 
 	QMenu *commonMenu = new widgets::LargeIconMenu(commonMenuButton);
@@ -9208,9 +9208,19 @@ void MainWindow::setupActions()
 	commonMenu->addAction(savesel);
 #endif
 	commonMenu->addAction(exportAnimation);
+#ifdef DRAWPILE_TIMELAPSE_DIALOG
 	commonMenu->addAction(makeTimelapse);
+#endif
 	commonMenu->addSeparator();
-	commonMenu->addAction(preferences);
+	commonMenu->addMenu(filemenu);
+	commonMenu->addMenu(editmenu);
+	commonMenu->addMenu(viewmenu);
+	commonMenu->addMenu(layerMenu);
+	commonMenu->addMenu(selectMenu);
+	commonMenu->addMenu(animationMenu);
+	commonMenu->addMenu(sessionmenu);
+	commonMenu->addMenu(toolsmenu);
+	commonMenu->addMenu(helpmenu);
 
 	// Brush slot shortcuts
 	m_brushSlots = new QActionGroup(this);
@@ -10094,6 +10104,17 @@ void MainWindow::prepareDockTabUpdate()
 void MainWindow::updateDockTabs()
 {
 	m_dockTabUpdatePending = false;
+	forceUpdateDockTabs();
+	// For some reason starting with Qt 6.11, setting dock tabs became
+	// unreliable, they keep getting reverted to being blank instead. Forcing
+	// them back to having icons a little later works though, it has something
+	// to do with the tabs getting laid out again I guess.
+	QTimer::singleShot(
+		100, Qt::CoarseTimer, this, &MainWindow::forceUpdateDockTabs);
+}
+
+void MainWindow::forceUpdateDockTabs()
+{
 	bool showIcons =
 		m_smallScreenMode || getAction("docktabicons")->isChecked();
 
