@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   appimage:
@@ -42,7 +42,10 @@ jobs:
             -DBUILD_PACKAGE_SUFFIX=x86_64
 
       - name: Build
+        env:
+          QT_SELECT: "6"
         run: cmake --build build --parallel 2
+
 
       - name: Install in AppDir
         run: |
@@ -81,8 +84,16 @@ jobs:
             --plugin qt \
             --output appimage
 
-      - name: Post
+      - name: Post artefact
         uses: actions/upload-artifact@v4
         with:
           name: DrawpileITI-AppImage-x86_64
           path: "*.AppImage"
+
+      - name: Publish in Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: DrawpileITI-x86_64.AppImage
+          generate_release_notes: true
+
