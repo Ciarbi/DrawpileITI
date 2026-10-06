@@ -24,9 +24,9 @@ jobs:
           sudo apt-get install -y \
             build-essential cmake git pkg-config \
             rustc cargo \
-            qt6-base-dev qt6-svg-dev qt6-multimedia-dev \
+            qt6-base-dev libqt6svg6-dev qt6-multimedia-dev \
             qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
-            qt6-websockets-dev libxkbcommon-dev \
+            libqt6websockets6-dev libxkbcommon-dev \
             libzip-dev zipcmp zipmerge ziptool \
             libmicrohttpd-dev libsodium-dev libsystemd-dev \
             qtkeychain-qt6-dev libwebp-dev libzstd-dev \
