@@ -1,0 +1,87 @@
+name: Build AppImage
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  appimage:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git pkg-config \
+            rustc cargo \
+            qt6-base-dev qt6-svg-dev qt6-multimedia-dev \
+            qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
+            qt6-websockets-dev libxkbcommon-dev \
+            libzip-dev zipcmp zipmerge ziptool \
+            libmicrohttpd-dev libsodium-dev libsystemd-dev \
+            qtkeychain-qt6-dev libwebp-dev libzstd-dev \
+            libavcodec-dev libavfilter-dev libavformat-dev \
+            libavutil-dev libswscale-dev
+
+      - name: Settings
+        run: |
+          cmake --preset linux-release-qt6-all-make \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DINITSYS=systemd \
+            -DBUILD_PACKAGE_SUFFIX=x86_64
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Install in AppDir
+        run: |
+          mkdir -p AppDir
+          DESTDIR="$GITHUB_WORKSPACE/AppDir" \
+            cmake --install build --config Release --prefix /usr
+
+      - name: Deploy linuxdeploy
+        run: |
+          mkdir -p "$HOME/.local/bin"
+
+          wget -O "$HOME/.local/bin/linuxdeploy" \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+
+          wget -O "$HOME/.local/bin/linuxdeploy-plugin-qt" \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+
+          chmod +x "$HOME/.local/bin/linuxdeploy" \
+            "$HOME/.local/bin/linuxdeploy-plugin-qt"
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Make AppImage
+        env:
+          LDAI_OUTPUT: DrawpileITI-x86_64.AppImage
+          EXTRA_QT_PLUGINS: "svg;"
+        run: |
+          test -x AppDir/usr/bin/drawpile
+          desktop_file="$(find AppDir/usr/share/applications -name '*.desktop' -print -quit)"
+          test -n "$desktop_file"
+
+          linuxdeploy \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/drawpile \
+            --desktop-file "$desktop_file" \
+            --plugin qt \
+            --output appimage
+
+      - name: Post
+        uses: actions/upload-artifact@v4
+        with:
+          name: DrawpileITI-AppImage-x86_64
+          path: "*.AppImage"
