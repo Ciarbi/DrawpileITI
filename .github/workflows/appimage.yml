@@ -39,6 +39,21 @@ jobs:
           test -x /usr/lib/qt6/bin/lconvert
           echo "/usr/lib/qt6/bin" >> "$GITHUB_PATH"
 
+      - name: Deploy linuxdeploy
+        run: |
+          mkdir -p "$HOME/.local/bin"
+
+          wget -O "$HOME/.local/bin/linuxdeploy-x86_64.AppImage" \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+
+          wget -O "$HOME/.local/bin/linuxdeploy-plugin-qt-x86_64.AppImage" \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+
+          chmod +x "$HOME/.local/bin/linuxdeploy-x86_64.AppImage" \
+            "$HOME/.local/bin/linuxdeploy-plugin-qt-x86_64.AppImage"
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Configure
         run: |
           cmake --preset linux-release-qt6-all-make \
@@ -56,21 +71,6 @@ jobs:
           mkdir -p AppDir
           DESTDIR="$GITHUB_WORKSPACE/AppDir" \
             cmake --install build --config Release --prefix /usr
-
-      - name: Deploy linuxdeploy
-        run: |
-          mkdir -p "$HOME/.local/bin"
-
-          wget -O "$HOME/.local/bin/linuxdeploy-x86_64.AppImage" \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-
-          wget -O "$HOME/.local/bin/linuxdeploy-plugin-qt-x86_64.AppImage" \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-
-          chmod +x "$HOME/.local/bin/linuxdeploy-x86_64.AppImage" \
-            "$HOME/.local/bin/linuxdeploy-plugin-qt-x86_64.AppImage"
-
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Make AppImage
         env:
