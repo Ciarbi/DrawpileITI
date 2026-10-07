@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -27,14 +27,19 @@ jobs:
             libgl1-mesa-dev \
             qt6-base-dev libqt6svg6-dev libqt6websockets6-dev \
             qt6-multimedia-dev qt6-tools-dev qt6-tools-dev-tools \
-            qt6-l10n-tools libxkbcommon-dev \
+            qt6-l10n-tools linguist-qt6 libxkbcommon-dev \
             libzip-dev zipcmp zipmerge ziptool \
             libmicrohttpd-dev libsodium-dev libsystemd-dev \
             qtkeychain-qt6-dev libwebp-dev libzstd-dev \
             libavcodec-dev libavfilter-dev libavformat-dev \
             libavutil-dev libswscale-dev
 
-      - name: Settings
+      - name: Add Qt 6 tools to PATH
+        run: |
+          test -x /usr/lib/qt6/bin/lconvert
+          echo "/usr/lib/qt6/bin" >> "$GITHUB_PATH"
+
+      - name: Configure
         run: |
           cmake --preset linux-release-qt6-all-make \
             -DCMAKE_INSTALL_PREFIX=/usr \
@@ -42,10 +47,7 @@ jobs:
             -DBUILD_PACKAGE_SUFFIX=x86_64
 
       - name: Build
-        env:
-          QT_SELECT: "6"
         run: cmake --build build --parallel 2
-
 
       - name: Install in AppDir
         run: |
@@ -84,8 +86,8 @@ jobs:
             --plugin qt \
             --output appimage
 
-      - name: Post artefact
-        uses: actions/upload-artifact@v4
+      - name: Post artifact
+        uses: actions/upload-artifact@v7
         with:
           name: DrawpileITI-AppImage-x86_64
           path: "*.AppImage"
@@ -96,4 +98,3 @@ jobs:
         with:
           files: DrawpileITI-x86_64.AppImage
           generate_release_notes: true
-
