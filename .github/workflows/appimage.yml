@@ -61,14 +61,14 @@ jobs:
         run: |
           mkdir -p "$HOME/.local/bin"
 
-          wget -O "$HOME/.local/bin/linuxdeploy" \
+          wget -O "$HOME/.local/bin/linuxdeploy-x86_64.AppImage" \
             https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
 
-          wget -O "$HOME/.local/bin/linuxdeploy-plugin-qt" \
+          wget -O "$HOME/.local/bin/linuxdeploy-plugin-qt-x86_64.AppImage" \
             https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
 
-          chmod +x "$HOME/.local/bin/linuxdeploy" \
-            "$HOME/.local/bin/linuxdeploy-plugin-qt"
+          chmod +x "$HOME/.local/bin/linuxdeploy-x86_64.AppImage" \
+            "$HOME/.local/bin/linuxdeploy-plugin-qt-x86_64.AppImage"
 
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
@@ -81,7 +81,7 @@ jobs:
           desktop_file="$(find AppDir/usr/share/applications -name '*.desktop' -print -quit)"
           test -n "$desktop_file"
 
-          linuxdeploy \
+          linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --executable AppDir/usr/bin/drawpile \
             --desktop-file "$desktop_file" \
