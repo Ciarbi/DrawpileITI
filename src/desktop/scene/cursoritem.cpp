@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "desktop/scene/cursoritem.h"
 #include <QPainter>
+#include <QGuiApplication>
+#include <QScreen>
 
 namespace drawingboard {
 
@@ -22,7 +24,20 @@ void CursorItem::setCursor(const QCursor &cursor)
 	if(cursor.shape() == Qt::BitmapCursor) {
 		refreshGeometry();
 		m_cursor = cursor;
-		m_bounds = QRectF(-m_cursor.hotSpot(), QSizeF(cursor.pixmap().size()));
+		
+		// Get device pixel ratio for high DPI support
+		qreal dpr = 1.0;
+		if (QGuiApplication::primaryScreen()) {
+			dpr = QGuiApplication::primaryScreen()->devicePixelRatio();
+		}
+		
+		// Scale hotspot by device pixel ratio (similar to Krita's approach)
+		QPoint hotspot = cursor.hotSpot();
+		QPointF scaledHotspot(hotspot.x() * dpr, hotspot.y() * dpr);
+		QSizeF pixmapSize(cursor.pixmap().size());
+		pixmapSize /= dpr;
+		
+		m_bounds = QRectF(-scaledHotspot, pixmapSize);
 	} else {
 		m_cursor = QCursor();
 	}

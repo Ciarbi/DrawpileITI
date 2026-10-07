@@ -27,10 +27,10 @@ jobs:
             libgl1-mesa-dev \
             qt6-base-dev libqt6svg6-dev libqt6websockets6-dev \
             qt6-multimedia-dev qt6-tools-dev qt6-tools-dev-tools \
-            qt6-l10n-tools linguist-qt6 libxkbcommon-dev \
+            qt6-l10n-tools libxkbcommon-dev \
             libzip-dev zipcmp zipmerge ziptool \
             libmicrohttpd-dev libsodium-dev libsystemd-dev \
-            qtkeychain-qt6-dev libwebp-dev libzstd-dev \
+            libwebp-dev libzstd-dev \
             libavcodec-dev libavfilter-dev libavformat-dev \
             libavutil-dev libswscale-dev
 
@@ -44,7 +44,9 @@ jobs:
           cmake --preset linux-release-qt6-all-make \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DINITSYS=systemd \
-            -DBUILD_PACKAGE_SUFFIX=x86_64
+            -DBUILD_PACKAGE_SUFFIX=x86_64 \
+            -DAPPIMAGE=ON \
+            -DENABLE_ARCH_NATIVE=OFF
 
       - name: Build
         run: cmake --build build --parallel 2

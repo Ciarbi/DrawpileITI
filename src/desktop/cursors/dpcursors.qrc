@@ -38,5 +38,15 @@
         <file>triangle-left.png</file>
         <file>triangle-right.png</file>
         <file>zoom.png</file>
+        <file>cross.svg</file>
+        <file>round.svg</file>
+        <file>pixel-black.svg</file>
+        <file>pixel-white.svg</file>
+        <file>zoom_smooth.svg</file>
+        <file>zoom_discrete.svg</file>
+        <file>rotate_smooth.svg</file>
+        <file>rotate_discrete.svg</file>
+        <file>rotate_cursor.svg</file>
+        <file>move-selection.svg</file>
     </qresource>
 </RCC>

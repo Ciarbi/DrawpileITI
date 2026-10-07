@@ -246,6 +246,8 @@ target_sources(dpclient PRIVATE
 	utils/compressedtimer.h
 	utils/cursors.cpp
 	utils/cursors.h
+	utils/brushcursor.cpp
+	utils/brushcursor.h
 	utils/customshortcutmodel.cpp
 	utils/customshortcutmodel.h
 	utils/debouncetimer.cpp

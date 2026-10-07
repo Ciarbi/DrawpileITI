@@ -56,4 +56,10 @@ esac
 # This is required for Qt to pick up the bundled application data directory
 # and is not currently provided by the linuxdeploy Qt plugin
 export XDG_DATA_DIRS="${XDG_DATA_DIRS-}:${APPDIR}/usr/share:/usr/local/share:/usr/share"
+
+# Ensure Qt can find the platform plugins (xcb, wayland, etc.) even when
+# environment is reset (e.g. when running with sudo)
+export QT_QPA_PLATFORM_PLUGIN_PATH="${APPDIR}/usr/plugins/platforms"
+export QT_PLUGIN_PATH="${APPDIR}/usr/plugins:${QT_PLUGIN_PATH-}"
+
 exec "$this_dir"/"$exec" "$@"

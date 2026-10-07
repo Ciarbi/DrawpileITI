@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+    <path d="M 5,11 A 6,6 0 0 1 11,5"/>
+    <polygon points="11,5 17,5 14,9 17,13 11,13"/>
+  </g>
+  <g fill="none" stroke="black" stroke-width="1" stroke-dasharray="3,2" stroke-linecap="round">
+    <path d="M 5,11 A 6,6 0 0 1 11,5"/>
+    <polygon points="11,5 17,5 14,9 17,13 11,13"/>
+  </g>
+</svg>

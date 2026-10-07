@@ -16,6 +16,7 @@
 #include "libclient/drawdance/viewstate.h"
 #include "libclient/tools/enums.h"
 #include "libclient/utils/cursors.h"
+#include "libclient/utils/brushcursor.h"
 #include "libclient/view/enums.h"
 #include "libclient/view/zoom.h"
 #include "libshared/util/qtcompat.h"
@@ -1001,10 +1002,10 @@ void CanvasView::resetCursor()
 	case PenMode::Normal:
 		break;
 	case PenMode::Colorpick:
-		setViewportCursor(Cursors::colorPick());
+		setViewportCursor(utils::BrushCursor::colorPickCursor());
 		return;
 	case PenMode::Layerpick:
-		setViewportCursor(Cursors::layerPick());
+		setViewportCursor(utils::BrushCursor::layerPickCursor());
 		return;
 	}
 
@@ -1019,28 +1020,28 @@ void CanvasView::resetCursor()
 	if(m_toolcursor.shape() == Qt::CrossCursor) {
 		switch(getCurrentCursorStyle()) {
 		case int(view::Cursor::Dot):
-			setViewportCursor(Cursors::dot());
+			setViewportCursor(utils::BrushCursor::roundCursor());
 			break;
 		case int(view::Cursor::Cross):
-			setViewportCursor(Qt::CrossCursor);
+			setViewportCursor(utils::BrushCursor::crossCursor());
 			break;
 		case int(view::Cursor::Arrow):
-			setViewportCursor(Qt::ArrowCursor);
+			setViewportCursor(utils::BrushCursor::arrowCursor());
 			break;
 		case int(view::Cursor::TriangleLeft):
-			setViewportCursor(Cursors::triangleLeft());
+			setViewportCursor(utils::BrushCursor::triangleLeftHandedCursor());
 			break;
 		case int(view::Cursor::TriangleRight):
-			setViewportCursor(Cursors::triangleRight());
+			setViewportCursor(utils::BrushCursor::triangleRightHandedCursor());
 			break;
 		case int(view::Cursor::Eraser):
-			setViewportCursor(Cursors::eraser());
+			setViewportCursor(utils::BrushCursor::eraserCursor());
 			break;
 		case int(view::Cursor::Blank):
-			setViewportCursor(Qt::BlankCursor);
+			setViewportCursor(utils::BrushCursor::blankCursor());
 			break;
 		default:
-			setViewportCursor(Cursors::triangleRight());
+			setViewportCursor(utils::BrushCursor::triangleRightHandedCursor());
 			break;
 		}
 	} else {

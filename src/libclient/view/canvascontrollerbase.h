@@ -5,6 +5,7 @@
 #include "libclient/canvas/point.h"
 #include "libclient/tools/enums.h"
 #include "libclient/utils/kis_cubic_curve.h"
+#include "libclient/utils/brushcursor.h"
 #include "libclient/view/hudaction.h"
 #include <QColor>
 #include <QCursor>
@@ -285,6 +286,8 @@ protected:
 	void setEraseCursorStyle(int eraseCursorStyle);
 	void setAlphaLockCursorStyle(int alphaLockCursorStyle);
 
+	void resetCursorStyle();
+
 	void clearHudHover();
 
 private:
@@ -295,6 +298,7 @@ private:
 
 	enum class PenMode { Normal, Colorpick, Layerpick };
 	enum class PenState { Up, MouseDown, TabletDown };
+	enum class ToolMode { HoverMode, PaintMode };
 	enum class ViewDragMode { None, Prepared, Started };
 
 	class SetDragParams;
@@ -548,6 +552,7 @@ private:
 #ifdef Q_OS_LINUX
 	bool m_waylandWorkarounds;
 #endif
+	ToolMode m_toolMode = ToolMode::HoverMode;
 };
 
 }

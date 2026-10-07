@@ -6,6 +6,7 @@
 #include "libclient/drawdance/eventlog.h"
 #include "libclient/drawdance/viewstate.h"
 #include "libclient/utils/cursors.h"
+#include "libclient/utils/brushcursor.h"
 #include "libclient/utils/qtguicompat.h"
 #include "libclient/view/enums.h"
 #include "libclient/view/touchhandler.h"
@@ -26,6 +27,7 @@
 #endif
 
 using utils::Cursors;
+using utils::BrushCursor;
 
 namespace view {
 
@@ -1832,6 +1834,8 @@ void CanvasControllerBase::penPressEvent(
 			m_penState = deviceType == int(tools::DeviceType::Tablet)
 							 ? PenState::TabletDown
 							 : PenState::MouseDown;
+			m_toolMode = ToolMode::PaintMode;
+			resetCursorStyle();
 			m_pointerDistance = 0;
 			m_pointerVelocity = 0;
 			canvas::Point point = mapPenPointToCanvasF(
@@ -1840,7 +1844,7 @@ void CanvasControllerBase::penPressEvent(
 
 			if(penMode != m_penMode) {
 				setPenMode(penMode);
-				resetCursor();
+				resetCursorStyle();
 			}
 
 			if(m_canvasModel) {
@@ -1925,6 +1929,8 @@ void CanvasControllerBase::penReleaseEvent(
 		}
 
 		m_penState = PenState::Up;
+		m_toolMode = ToolMode::HoverMode;
+		resetCursorStyle();
 
 		m_hoveringOverHud = checkHudHover(posf.toPoint()).isValid();
 		if(!m_hoveringOverHud) {
@@ -2267,10 +2273,10 @@ void CanvasControllerBase::resetCursor()
 	case PenMode::Normal:
 		break;
 	case PenMode::Colorpick:
-		setViewportCursor(Cursors::colorPick());
+		setViewportCursor(BrushCursor::colorPickCursor());
 		return;
 	case PenMode::Layerpick:
-		setViewportCursor(Cursors::layerPick());
+		setViewportCursor(BrushCursor::layerPickCursor());
 		return;
 	}
 
@@ -2285,32 +2291,43 @@ void CanvasControllerBase::resetCursor()
 	if(m_toolCursor.shape() == Qt::CrossCursor) {
 		switch(getCurrentCursorStyle()) {
 		case int(view::Cursor::Dot):
-			setViewportCursor(Cursors::dot());
+			setViewportCursor(BrushCursor::roundCursor());
 			break;
 		case int(view::Cursor::Cross):
-			setViewportCursor(Qt::CrossCursor);
+			setViewportCursor(BrushCursor::crossCursor());
 			break;
 		case int(view::Cursor::Arrow):
-			setViewportCursor(Qt::ArrowCursor);
+			setViewportCursor(BrushCursor::arrowCursor());
 			break;
 		case int(view::Cursor::TriangleLeft):
-			setViewportCursor(Cursors::triangleLeft());
+			setViewportCursor(BrushCursor::triangleLeftHandedCursor());
 			break;
 		case int(view::Cursor::TriangleRight):
-			setViewportCursor(Cursors::triangleRight());
+			setViewportCursor(BrushCursor::triangleRightHandedCursor());
 			break;
 		case int(view::Cursor::Eraser):
-			setViewportCursor(Cursors::eraser());
+			setViewportCursor(BrushCursor::eraserCursor());
 			break;
 		case int(view::Cursor::Blank):
-			setViewportCursor(Qt::BlankCursor);
+			setViewportCursor(BrushCursor::blankCursor());
 			break;
 		default:
-			setViewportCursor(Cursors::triangleRight());
+			setViewportCursor(BrushCursor::triangleRightHandedCursor());
 			break;
 		}
 	} else {
 		setViewportCursor(m_toolCursor);
+	}
+}
+
+void CanvasControllerBase::resetCursorStyle()
+{
+	if (m_toolMode == ToolMode::PaintMode) {
+		// In paint mode, use a blank cursor to show the brush outline
+		setViewportCursor(BrushCursor::blankCursor());
+	} else {
+		// In hover mode, use the normal brush cursor
+		resetCursor();
 	}
 }
 

@@ -78,8 +78,8 @@ void Tools::initCursors(config::Config *cfg, QFormLayout *form)
 	QComboBox *alphaLockCursor = new QComboBox;
 
 	QPair<QString, int> cursorPairs[] = {
-		{tr("Blank"), int(view::Cursor::Blank)},
-		{tr("Dot"), int(view::Cursor::Dot)},
+		{tr("None"), int(view::Cursor::Blank)},
+		{tr("Small dot"), int(view::Cursor::Dot)},
 		{tr("Crosshair"), int(view::Cursor::Cross)},
 		{tr("Arrow"), int(view::Cursor::Arrow)},
 		{tr("Right-handed triangle"), int(view::Cursor::TriangleRight)},
