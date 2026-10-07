@@ -8,9 +8,13 @@
 #
 # With no arguments, scans src/**/i18n/*.ts.
 import glob
+import io
 import re
 import sys
 import xml.etree.ElementTree as ET
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # Qt placeholders: %1 %2 ... %L1 %Ln %n (%Ln not valid; %L<int> and %n are)
 PLACEHOLDER = re.compile(r"%L?\d+|%n")

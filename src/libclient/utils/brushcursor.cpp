@@ -17,7 +17,8 @@ BrushCursorCache::BrushCursorCache()
 QCursor BrushCursorCache::loadImpl(const QString &cursorName, int hotspotX, int hotspotY, int width, int height)
 {
 #ifdef Q_OS_ANDROID
-    // On Android, large cursors render glitchy, so we avoid scaling the cursors
+    (void)width;
+    (void)height;
     QPixmap cursorImage = QPixmap(":cursors/" + cursorName);
 #else
     QPixmap cursorImage = QIcon(":cursors/" + cursorName).pixmap(width > -1 ? width : 32, height > -1 ? height : 32);
