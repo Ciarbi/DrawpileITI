@@ -873,7 +873,7 @@ jobs:
           artifacts=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --paginate -q '.artifacts[] | select(.name | startswith("Drawpile")) | .id')
           for id in $artifacts; do
             echo "Downloading artifact $id..."
-            gh api repos/${{ github.repository }}/actions/artifacts/$id/zip --output /tmp/artifact-$id.zip
+            gh api repos/${{ github.repository }}/actions/artifacts/$id/zip > /tmp/artifact-$id.zip
             unzip -q /tmp/artifact-$id.zip -d .
             rm /tmp/artifact-$id.zip
           done
