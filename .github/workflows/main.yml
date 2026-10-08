@@ -870,13 +870,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          artifacts=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --paginate -q '.artifacts[] | select(.name | startswith("Drawpile")) | .id')
-          for id in $artifacts; do
-            echo "Downloading artifact $id..."
+          artifacts=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --paginate -q '.artifacts[] | select(.name | startswith("Drawpile")) | "\(.id) \(.name)"')
+          while read -r id name; do
+            echo "Downloading artifact $name ($id)..."
             gh api repos/${{ github.repository }}/actions/artifacts/$id/zip > /tmp/artifact-$id.zip
-            unzip -q /tmp/artifact-$id.zip -d .
+            mkdir -p "$name"
+            unzip -q /tmp/artifact-$id.zip -d "$name"
             rm /tmp/artifact-$id.zip
-          done
+          done <<< "$artifacts"
 
       - name: Dump directory contents
         run: ls -alFR
