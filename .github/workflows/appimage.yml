@@ -57,6 +57,7 @@ jobs:
       - name: Configure
         run: |
           cmake --preset linux-release-qt6-all-make \
+            -DCMAKE_INSTALL_PREFIX=/usr \
             -DINITSYS=systemd \
             -DBUILD_PACKAGE_SUFFIX=x86_64 \
             -DAPPIMAGE=ON \
