@@ -920,6 +920,7 @@ jobs:
           RELEASE_TITLE: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'continuous alpha' }}
           CLOBBER_EXISTING: ${{ !startsWith(github.ref, 'refs/tags/') }}
           PRERELEASE: ${{ !startsWith(github.ref, 'refs/tags/') || contains(github.ref, '-') }}
+          GIT_REPO_SLUG: Ciarbi/DrawpileITI
         run: |
           checkout/pkg/make-github-release.sh \
             'Drawpile-Android-30-36-arm64-Qt5.K4b3b2a81b7a285e5705e70d11e5535fddc89b3e1;Drawpile-*.apk;Android APK 64bit' \
