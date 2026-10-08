@@ -71,22 +71,10 @@ jobs:
           mkdir -p AppDir
           DESTDIR="$GITHUB_WORKSPACE/AppDir" \
             cmake --install build --config Release
-
-      - name: Make AppImage
-        env:
-          LDAI_OUTPUT: DrawpileITI-x86_64.AppImage
-          EXTRA_QT_PLUGINS: "svg;"
-        run: |
-          test -x AppDir/usr/bin/drawpile
-          desktop_file="$(find AppDir/usr/share/applications -name '*.desktop' -print -quit)"
-          test -n "$desktop_file"
-
-          linuxdeploy-x86_64.AppImage \
-            --appdir AppDir \
-            --executable AppDir/usr/bin/drawpile \
-            --desktop-file "$desktop_file" \
-            --plugin qt \
-            --output appimage
+          # The cmake --install step triggers linuxdeploy via a custom target
+          # and creates Drawpile-x86_64.AppImage in the workspace root.
+          # Rename it to the expected artifact name.
+          mv Drawpile-x86_64.AppImage DrawpileITI-x86_64.AppImage
 
       - name: Post artifact
         uses: actions/upload-artifact@v7
