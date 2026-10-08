@@ -864,6 +864,9 @@ jobs:
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806
+        with:
+          merge-multiple: true
+          pattern: Drawpile-*
 
       - name: Dump directory contents
         run: ls -alFR
