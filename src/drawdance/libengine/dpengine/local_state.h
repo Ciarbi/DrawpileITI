@@ -45,6 +45,7 @@ DP_local_state_new(DP_CanvasState *cs_or_null,
 void DP_local_state_free(DP_LocalState *ls);
 
 void DP_local_state_reset(DP_LocalState *ls);
+void DP_local_state_reset_to(DP_LocalState *ls, DP_CanvasState *cs);
 
 // Calls the given function with actions to restore the local state, then calls
 // it with a null action last.
@@ -87,8 +88,12 @@ bool DP_local_state_playback_image_build(DP_LocalState *ls, DP_DrawContext *dc,
                                          void *user);
 
 bool DP_local_state_project_snapshot_build(DP_LocalState *ls,
+                                           DP_DrawContext *dc,
                                            DP_LocalStateAcceptResetMessageFn fn,
                                            void *user);
+
+bool DP_local_state_project_player_snapshot_build(
+    DP_LocalState *ls, DP_LocalStateAcceptResetMessageFn fn, void *user);
 
 
 void DP_local_state_layer_states_apply(

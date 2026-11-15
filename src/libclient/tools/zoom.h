@@ -17,18 +17,27 @@ public:
 
 	void begin(const BeginParams &params) override;
 	void motion(const MotionParams &params) override;
+	void modify(const ModifyParams &params) override;
 	void end(const EndParams &params) override;
 
-private:
-	void updatePreview() const;
-	void removePreview() const;
-	QRect getRect() const;
-	QRect getCenterRect() const;
+	void setScrub(bool scrub);
 
+private:
+	static constexpr int STEPS = 3;
+	static constexpr int MIN_DIMENSION = 15;
+
+	void updatePreview(bool center) const;
+	void removePreview() const;
+	QRect getRect(bool center) const;
+
+	bool m_scrub = false;
+	bool m_drawing = false;
 	bool m_reverse = false;
-	bool m_zooming = false;
+	bool m_scrubbing = false;
 	QPoint m_start;
 	QPoint m_end;
+	QPointF m_scrubPos;
+	QPointF m_scrubLast;
 	ClickDetector m_clickDetector;
 };
 

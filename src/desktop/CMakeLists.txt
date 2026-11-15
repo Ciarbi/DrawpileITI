@@ -75,6 +75,7 @@ target_sources(drawpile PRIVATE
 	cursors/eraser.png
 	cursors/layerpicker.png
 	cursors/line.png
+	cursors/liquify.png
 	cursors/rectangle.png
 	cursors/rotate.png
 	cursors/rotate-discrete.png
@@ -294,6 +295,8 @@ target_sources(drawpile PRIVATE
 	scene/hudhandler.h
 	scene/lasertrailitem.cpp
 	scene/lasertrailitem.h
+	scene/liquifyitem.cpp
+	scene/liquifyitem.h
 	scene/maskpreviewitem.cpp
 	scene/maskpreviewitem.h
 	scene/noticeitem.cpp
@@ -302,6 +305,8 @@ target_sources(drawpile PRIVATE
 	scene/outlineitem.h
 	scene/pathpreviewitem.cpp
 	scene/pathpreviewitem.h
+	scene/pivotitem.cpp
+	scene/pivotitem.h
 	scene/scenewrapper.cpp
 	scene/scenewrapper.h
 	scene/selectionitem.cpp
@@ -332,6 +337,8 @@ target_sources(drawpile PRIVATE
 	toolwidgets/lasersettings.h
 	toolwidgets/lassofillsettings.cpp
 	toolwidgets/lassofillsettings.h
+	toolwidgets/liquifysettings.cpp
+	toolwidgets/liquifysettings.h
 	toolwidgets/pansettings.cpp
 	toolwidgets/pansettings.h
 	toolwidgets/rotationsettings.cpp
@@ -433,8 +440,6 @@ target_sources(drawpile PRIVATE
 	widgets/dualcolorbutton.h
 	widgets/expandshrinkspinner.cpp
 	widgets/expandshrinkspinner.h
-	widgets/filmstrip.cpp
-	widgets/filmstrip.h
 	widgets/flipbookview.cpp
 	widgets/flipbookview.h
 	widgets/groupedtoolbutton.cpp
@@ -524,6 +529,10 @@ target_link_libraries(drawpile PRIVATE
 	${QT_PACKAGE_NAME}::Widgets
 	${QT_PACKAGE_NAME}::Xml
 )
+
+if(QT_VERSION_MAJOR GREATER_EQUAL 6)
+	target_compile_definitions(drawpile PRIVATE QT_NO_CONTEXTLESS_CONNECT=1)
+endif()
 
 if(AUDIO_IMPL STREQUAL "MINIAUDIO")
 	add_subdirectory(bundled/miniaudio)

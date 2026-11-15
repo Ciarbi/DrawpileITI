@@ -86,7 +86,7 @@ public:
 	void setZoomAt(qreal zoom, const QPointF &pos);
 	void resetZoomCenter();
 	void resetZoomCursor();
-	void zoomTo(const QRect &rect, int steps);
+	void zoomToRect(const QRect &rect);
 	void zoomToFit();
 	void zoomToFitHeight();
 	void zoomToFitWidth();
@@ -96,6 +96,7 @@ public:
 	void zoomOutCursor();
 	void zoomSteps(int steps);
 	void zoomStepsAt(int steps, const QPointF &point);
+	void scrubZoomAt(qreal delta, QPointF point);
 	void setRotation(qreal degrees);
 	void resetRotation();
 	void resetRotationCursor();
@@ -294,7 +295,6 @@ private:
 	static constexpr qreal SCROLL_STEP = 64.0;
 	static constexpr qreal ROTATION_STEP = 5.0;
 	static constexpr qreal DISCRETE_ROTATION_STEP = 15.0;
-	static constexpr int ZOOM_TO_MINIMUM_DIMENSION = 15;
 
 	enum class PenMode { Normal, Colorpick, Layerpick };
 	enum class PenState { Up, MouseDown, TabletDown };

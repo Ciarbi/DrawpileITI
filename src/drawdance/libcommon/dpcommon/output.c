@@ -25,6 +25,7 @@
 #include "conversions.h"
 #include <errno.h>
 #include <zlib.h>
+#include <zstd.h>
 
 #ifdef DP_QT_IO
 #    include "output_qt.h"
@@ -142,19 +143,6 @@ bool DP_output_format(DP_Output *output, const char *fmt, ...)
     return result;
 }
 
-bool DP_output_clear(DP_Output *output)
-{
-    DP_ASSERT(output);
-    bool (*clear)(void *) = output->methods->clear;
-    if (clear) {
-        return clear(output->internal);
-    }
-    else {
-        DP_error_set("Clearing output not supported");
-        return false;
-    }
-}
-
 bool DP_output_flush(DP_Output *output)
 {
     DP_ASSERT(output);
@@ -193,11 +181,47 @@ bool DP_output_seek(DP_Output *output, size_t offset)
     }
 }
 
-QIODevice *DP_output_qiodevice(DP_Output *output)
+bool DP_output_control(DP_Output *output, int command, void *param)
 {
     DP_ASSERT(output);
-    QIODevice *(*qiodevice)(void *) = output->methods->qiodevice;
-    return qiodevice ? qiodevice(output->internal) : NULL;
+    bool (*control)(void *, int, void *) = output->methods->control;
+    return control && control(output->internal, command, param);
+}
+
+bool DP_output_clear(DP_Output *output)
+{
+    DP_ASSERT(output);
+    return DP_output_control(output, DP_OUTPUT_CONTROL_CLEAR, NULL);
+}
+
+void *DP_output_buffer(DP_Output *output)
+{
+    DP_ASSERT(output);
+    void *buffer;
+    if (DP_output_control(output, DP_OUTPUT_CONTROL_BUFFER, &buffer)) {
+        return buffer;
+    }
+    else {
+        return NULL;
+    }
+}
+
+size_t DP_output_buffer_size(DP_Output *output)
+{
+    DP_ASSERT(output);
+    size_t size;
+    if (DP_output_control(output, DP_OUTPUT_CONTROL_BUFFER_SIZE, &size)) {
+        return size;
+    }
+    else {
+        return 0;
+    }
+}
+
+bool DP_output_free_on_close_set(DP_Output *output, bool free_on_close)
+{
+    return DP_output_control(output, DP_OUTPUT_CONTROL_FREE_ON_CLOSE_SET,
+                             &free_on_close);
 }
 
 
@@ -273,8 +297,12 @@ static bool file_output_dispose(void *internal, bool discard)
 }
 
 static const DP_OutputMethods file_output_methods = {
-    file_output_write, NULL, file_output_flush,   file_output_tell,
-    file_output_seek,  NULL, file_output_dispose,
+    file_output_write,
+    file_output_flush,
+    file_output_tell,
+    file_output_seek,
+    NULL,
+    file_output_dispose,
 };
 
 static const DP_OutputMethods *file_output_init(void *internal, void *arg)
@@ -413,8 +441,12 @@ static bool gzip_output_dispose(void *internal, bool discard)
 }
 
 static const DP_OutputMethods gzip_output_methods = {
-    gzip_output_write, NULL, gzip_output_flush,   gzip_output_tell,
-    gzip_output_seek,  NULL, gzip_output_dispose,
+    gzip_output_write,
+    gzip_output_flush,
+    gzip_output_tell,
+    gzip_output_seek,
+    NULL,
+    gzip_output_dispose,
 };
 
 static const DP_OutputMethods *gzip_output_init(void *internal, void *arg)
@@ -475,18 +507,32 @@ static size_t mem_output_write(void *internal, const void *buffer, size_t size)
     return size;
 }
 
-static bool mem_output_clear(void *internal)
-{
-    DP_MemOutputState *state = internal;
-    state->used = 0;
-    state->buffer[0] = '\0';
-    return true;
-}
-
 static size_t mem_output_tell(void *internal, DP_UNUSED bool *out_error)
 {
     DP_MemOutputState *state = internal;
     return state->used;
+}
+
+static bool mem_output_control(void *internal, int command, void *param)
+{
+    DP_MemOutputState *state = internal;
+    switch (command) {
+    case DP_OUTPUT_CONTROL_CLEAR:
+        state->used = 0;
+        state->buffer[0] = '\0';
+        return true;
+    case DP_OUTPUT_CONTROL_BUFFER:
+        *(void **)param = state->buffer;
+        return true;
+    case DP_OUTPUT_CONTROL_BUFFER_SIZE:
+        *(size_t *)param = state->used;
+        return true;
+    case DP_OUTPUT_CONTROL_FREE_ON_CLOSE_SET:
+        state->free_on_close = *(bool *)param;
+        return true;
+    default:
+        return false;
+    }
 }
 
 static bool mem_output_dispose(void *internal, DP_UNUSED bool discard)
@@ -499,7 +545,7 @@ static bool mem_output_dispose(void *internal, DP_UNUSED bool discard)
 }
 
 static const DP_OutputMethods mem_output_methods = {
-    mem_output_write,   mem_output_clear, NULL, mem_output_tell, NULL, NULL,
+    mem_output_write,   NULL, mem_output_tell, NULL, mem_output_control,
     mem_output_dispose,
 };
 
@@ -509,29 +555,165 @@ static const DP_OutputMethods *mem_output_init(void *internal, void *arg)
     return &mem_output_methods;
 }
 
-static void mem_output_assign_out_vars(DP_Output *output, void ***out_buffer,
-                                       size_t **out_size)
-{
-    DP_MemOutputState *state = (void *)output->internal;
-    if (out_buffer) {
-        *out_buffer = (void *)&state->buffer;
-    }
-    if (out_size) {
-        *out_size = &state->used;
-    }
-}
-
-DP_Output *DP_mem_output_new(size_t initial_capacity, bool free_on_close,
-                             void ***out_buffer, size_t **out_size)
+static DP_MemOutputState mem_output_state_make(size_t initial_capacity,
+                                               bool free_on_close)
 {
     size_t capacity = initial_capacity < DP_MEM_OUTPUT_MIN_CAPACITY
                         ? DP_MEM_OUTPUT_MIN_CAPACITY
                         : initial_capacity;
     DP_MemOutputState state = {DP_malloc(capacity), capacity, 0, free_on_close};
     state.buffer[0] = '\0';
-    DP_Output *output = DP_output_new(mem_output_init, &state, sizeof(state));
-    mem_output_assign_out_vars(output, out_buffer, out_size);
-    return output;
+    return state;
+}
+
+DP_Output *DP_mem_output_new(size_t initial_capacity, bool free_on_close)
+{
+    DP_MemOutputState state =
+        mem_output_state_make(initial_capacity, free_on_close);
+    return DP_output_new(mem_output_init, &state, sizeof(state));
+}
+
+
+typedef struct DP_ZstdStreamOutputState {
+    ZSTD_CCtx *cctx;
+    size_t inbuf_fill;
+    size_t inbuf_size;
+    size_t outbuf_size;
+    unsigned char *inbuf;
+    unsigned char *outbuf;
+    DP_OutputStreamWriteFn write;
+    void *user;
+} DP_ZstdStreamOutputState;
+
+static bool zstd_stream_output_compress(DP_ZstdStreamOutputState *state,
+                                        ZSTD_EndDirective end_op, bool discard)
+{
+    DP_ASSERT(state->inbuf_fill != 0 || end_op == ZSTD_e_end);
+
+    ZSTD_inBuffer input = {state->inbuf, state->inbuf_fill, 0};
+    state->inbuf_fill = 0;
+
+    while (input.pos < input.size) {
+        ZSTD_outBuffer output = {state->outbuf, state->outbuf_size, 0};
+
+        size_t remaining =
+            ZSTD_compressStream2(state->cctx, &output, &input, end_op);
+        if (ZSTD_isError(remaining)) {
+            if (discard) {
+                DP_warn("Error in zstd compression stream: %s",
+                        ZSTD_getErrorName(remaining));
+            }
+            else {
+                DP_error_set("Error in zstd compression stream: %s",
+                             ZSTD_getErrorName(remaining));
+            }
+            return false;
+        }
+
+        if (output.pos != 0) {
+            state->write(state->user, state->outbuf, output.pos);
+        }
+    }
+    return true;
+}
+
+static size_t zstd_stream_output_write(void *internal, const void *buffer,
+                                       size_t size)
+{
+    DP_ZstdStreamOutputState *state = internal;
+    const unsigned char *in = buffer;
+    size_t pos = 0;
+
+    if (state->inbuf_fill != 0) {
+        size_t need = DP_min_size(state->inbuf_size - state->inbuf_fill, size);
+        memcpy(state->inbuf + state->inbuf_fill, in + pos, need);
+        state->inbuf_fill += need;
+        if (state->inbuf_fill < state->inbuf_size) {
+            DP_ASSERT(need == size);
+            return need;
+        }
+        else if (!zstd_stream_output_compress(state, ZSTD_e_continue, false)) {
+            return pos;
+        }
+        pos += need;
+    }
+
+    while (size - pos >= state->inbuf_size) {
+        memcpy(state->inbuf, in + pos, state->inbuf_size);
+        state->inbuf_fill = state->inbuf_size;
+        if (!zstd_stream_output_compress(state, ZSTD_e_continue, false)) {
+            return pos;
+        }
+        pos += state->inbuf_size;
+    }
+
+    if (pos < size) {
+        size_t need = size - pos;
+        memcpy(state->inbuf + state->inbuf_fill, in + pos, need);
+        state->inbuf_fill += need;
+        pos += need;
+    }
+
+    DP_ASSERT(pos == size);
+    return pos;
+}
+
+static bool zstd_stream_output_dispose(void *internal, bool discard)
+{
+    DP_ZstdStreamOutputState *state = internal;
+    bool ok = zstd_stream_output_compress(state, ZSTD_e_end, discard);
+    DP_free(state->outbuf);
+    DP_free(state->inbuf);
+    ZSTD_freeCCtx(state->cctx);
+    return ok;
+}
+
+static const DP_OutputMethods zstd_stream_output_methods = {
+    zstd_stream_output_write,   NULL, NULL, NULL, NULL,
+    zstd_stream_output_dispose,
+};
+
+static const DP_OutputMethods *zstd_stream_output_init(void *internal,
+                                                       void *arg)
+{
+    *((DP_ZstdStreamOutputState *)internal) =
+        *((DP_ZstdStreamOutputState *)arg);
+    return &zstd_stream_output_methods;
+}
+
+DP_Output *DP_zstd_stream_output_new(DP_OutputStreamWriteFn write, void *user)
+{
+    DP_ASSERT(write);
+
+    size_t inbuf_size = ZSTD_CStreamInSize();
+    if (inbuf_size == 0) {
+        DP_error_set("Invalid zstd input buffer size");
+        return NULL;
+    }
+
+    size_t outbuf_size = ZSTD_CStreamOutSize();
+    if (outbuf_size == 0) {
+        DP_error_set("Invalid zstd output buffer size");
+        return NULL;
+    }
+
+    ZSTD_CCtx *cctx = ZSTD_createCCtx();
+    if (!cctx) {
+        DP_error_set("Error creating zstd compression context");
+        return NULL;
+    }
+
+    DP_ZstdStreamOutputState state = {
+        cctx,
+        0,
+        inbuf_size,
+        outbuf_size,
+        DP_malloc(inbuf_size),
+        DP_malloc(outbuf_size),
+        write,
+        user,
+    };
+    return DP_output_new(zstd_stream_output_init, &state, sizeof(state));
 }
 
 

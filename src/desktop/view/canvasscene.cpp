@@ -6,9 +6,11 @@ extern "C" {
 #include "desktop/scene/annotationitem.h"
 #include "desktop/scene/colorpickitem.h"
 #include "desktop/scene/lasertrailitem.h"
+#include "desktop/scene/liquifyitem.h"
 #include "desktop/scene/maskpreviewitem.h"
 #include "desktop/scene/outlineitem.h"
 #include "desktop/scene/pathpreviewitem.h"
+#include "desktop/scene/pivotitem.h"
 #include "desktop/scene/selectionitem.h"
 #include "desktop/scene/transformitem.h"
 #include "desktop/scene/usermarkeritem.h"
@@ -31,15 +33,16 @@ extern "C" {
 
 namespace view {
 
-CanvasScene::CanvasScene(bool outline, QObject *parent)
+CanvasScene::CanvasScene(bool software, QObject *parent)
 	: QGraphicsScene(parent)
 	, m_hud(new HudHandler(this, this))
+	, m_software(software)
 	, m_colorPickVisibility(ColorPickRenderer::defaultVisibility())
 {
 	m_canvasGroup = new QGraphicsItemGroup;
 	addItem(m_canvasGroup);
 
-	if(outline) {
+	if(software) {
 		m_outline = new OutlineItem(m_canvasGroup);
 		m_outline->setUpdateSceneOnRefresh(true);
 	}
@@ -133,6 +136,7 @@ void CanvasScene::setZoom(qreal zoom)
 		}
 		if(m_transform) {
 			m_transform->setZoom(zoom);
+			m_pivot->setZoom(zoom);
 		}
 	}
 }
@@ -451,10 +455,12 @@ void CanvasScene::setSelectionIgnored(bool selectionIgnored)
 	}
 }
 
-void CanvasScene::setTransformToolState(int mode, int handle, bool dragging)
+void CanvasScene::setTransformToolState(
+	int mode, int handle, bool dragging, bool pivotShown)
 {
 	if(m_transform) {
 		m_transform->setToolState(mode, handle, dragging);
+		m_pivot->setToolState(handle, dragging, pivotShown);
 	}
 }
 
@@ -481,6 +487,18 @@ void CanvasScene::hudAddItem(BaseItem *item)
 void CanvasScene::hudRemoveItem(BaseItem *item)
 {
 	removeSceneItem(item);
+}
+
+void CanvasScene::hudAddObject(drawingboard::BaseObject *object)
+{
+	object->setUpdateSceneOnRefresh(true);
+	addItem(object);
+}
+
+void CanvasScene::hudRemoveObject(drawingboard::BaseObject *object)
+{
+	removeItem(object);
+	object->setUpdateSceneOnRefresh(false);
 }
 
 void CanvasScene::addSceneItem(BaseItem *item)
@@ -597,38 +615,77 @@ void CanvasScene::setSelection(
 
 void CanvasScene::onTransformChanged()
 {
-	bool hadTransform = m_transform;
+	bool hadTransformOrLiquify = m_transform || m_liquify;
 	canvas::TransformModel *transform =
 		m_canvasModel ? m_canvasModel->transform() : nullptr;
+
 	bool active = transform && transform->isActive();
-	if(active) {
+	bool isLiquify = active && transform->isLiquify();
+	bool haveTransform = active && !isLiquify;
+	bool haveLiquify = active && isLiquify;
+
+	if(haveTransform) {
 		const TransformQuad &quad = transform->dstQuad();
 		bool valid = transform->isDstQuadValid();
 		if(m_transform) {
 			m_transform->setQuad(quad, valid);
+			m_pivot->setQuadValid(valid);
 		} else {
 			m_transform = new TransformItem(quad, valid, m_zoom, m_canvasGroup);
 			m_transform->setUpdateSceneOnRefresh(true);
+			m_pivot = new PivotItem(valid, m_zoom, m_canvasGroup);
+			m_pivot->setUpdateSceneOnRefresh(true);
 		}
+
 		// Accurate previews happen in the paint engine, fast ones in the item.
 		if(transform->isPreviewAccurate()) {
 			m_transform->setPreviewImage(QImage());
 		} else {
 			m_transform->setPreviewImage(transform->floatingImage());
 		}
+
+		if(valid) {
+			m_pivot->updatePosition(quad.pivotPos());
+		}
+
 	} else if(m_transform) {
 		delete m_transform;
+		delete m_pivot;
 		m_transform = nullptr;
+		m_pivot = nullptr;
+	}
+
+	// The hardware renderer handles this preview separately so that the
+	// hardware-rendered outline can go on top of it.
+	if(m_software) {
+		if(haveLiquify) {
+			if(!m_liquify) {
+				m_liquify = new LiquifyItem(m_canvasGroup);
+				m_liquify->setUpdateSceneOnRefresh(true);
+			}
+			// Accurate previews are in the paint engine, fast ones in the item.
+			if(transform->isPreviewAccurate()) {
+				m_liquify->setImage(QImage(), QPoint());
+			} else {
+				m_liquify->setImage(
+					transform->floatingImage(),
+					transform->floatingImageOffset());
+			}
+		} else if(m_liquify) {
+			delete m_liquify;
+			m_liquify = nullptr;
+		}
 	}
 
 	if(m_selection) {
-		bool haveTransform = m_transform;
-		m_selection->updateVisibility(!haveTransform);
+		bool haveTransformOrLiquify = haveTransform || haveLiquify;
+		m_selection->updateVisibility(!haveTransformOrLiquify);
 		// Bit of a hack to mitigate the selection flickering back to the old
 		// location after a transform and then stumbling into the new one by
 		// delaying its display slightly if it was just applied.
-		bool shouldDelaySelection = hadTransform && !haveTransform &&
-									transform && transform->isJustApplied();
+		bool shouldDelaySelection = hadTransformOrLiquify &&
+									!haveTransformOrLiquify && transform &&
+									transform->isJustApplied();
 		m_selection->setTransparentDelay(shouldDelaySelection ? 0.5 : 0.0);
 	}
 }

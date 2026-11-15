@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#ifndef LIBCLIENT_TOOLS_LIQUIFY_H
+#define LIBCLIENT_TOOLS_LIQUIFY_H
+#include "libclient/drawdance/brushengine.h"
+#include "libclient/tools/tool.h"
+
+namespace canvas {
+class TransformModel;
+}
+
+namespace drawdance {
+class LiquifyWorker;
+}
+
+namespace tools {
+
+class LiquifyTool final : public Tool {
+public:
+	enum class Operation {
+		Move,
+		Scale,
+		Rotate,
+		Smoothe,
+		Erase,
+		Offset,
+		Last = Offset,
+	};
+
+	struct Properties {
+		Operation operation = Operation::Move;
+		qreal size = 60.0;
+		qreal amount = 0.05;
+		qreal hardness = 0.5;
+		qreal spacing = 0.2;
+		bool sizePressure = false;
+		bool amountPressure = false;
+		bool hardnessPressure = false;
+		bool reverse = false;
+	};
+
+	LiquifyTool(ToolController &owner);
+
+	void begin(const BeginParams &params) override;
+	void motion(const MotionParams &params) override;
+	void end(const EndParams &params) override;
+
+	bool copyCut(bool cut) override;
+	void applyCopyCut(bool cut);
+
+	void finishMultipart() override;
+	void cancelMultipart() override;
+	void undoMultipart() override;
+	void redoMultipart() override;
+	bool isMultipart() const override;
+
+	void offsetActiveTool(int x, int y) override;
+
+	void beginTemporary(Tool::Type toolToReturnTo);
+	void beginTemporaryPaste(
+		Tool::Type toolToReturnTo, const QImage &img,
+		const QByteArray &liquifyData);
+	void clearTemporary();
+
+	bool handleDeselect(bool finish);
+
+	void stamp() override;
+	void applyStamp();
+
+	void setProperties(const Properties &props);
+	void updateDisplacement(float displacement);
+	void applyDisplacement();
+
+private:
+	static constexpr int UNDO_DEPTH = 100;
+	static constexpr float SMOOTHE_KERNEL_RADIUS = 1.5f;
+	static constexpr unsigned int FLAG_CONSTRAIN = (1u << 0u);
+	static constexpr unsigned int FLAG_CENTER = (1u << 1u);
+
+	bool isLiquifyActive() const;
+	canvas::TransformModel *getActiveLiquifyModel() const;
+	drawdance::LiquifyWorker *getActiveLiquifyWorker() const;
+	QPointF getLiquifyOffset() const;
+	canvas::TransformModel *tryBeginLiquify(
+		const QImage *img = nullptr, const QByteArray *liquifyData = nullptr);
+	void endLiquify(canvas::TransformModel *transform, bool applied);
+
+	void setLiquifyWorkerOperation(drawdance::LiquifyWorker *liquifyWorker);
+
+	bool apply(bool stamp);
+
+	void returnToPreviousTool();
+
+	static void cancelStroke(drawdance::LiquifyWorker *liquifyWorker);
+
+	Properties m_props;
+	canvas::Point m_firstPoint;
+	qreal m_zoom = 1.0;
+	Tool::Type m_toolToReturnTo = Tool::Type::_LASTTOOL;
+	bool m_drawing = false;
+	bool m_dragging = false;
+	bool m_strokeStarted = false;
+};
+
+}
+
+#endif

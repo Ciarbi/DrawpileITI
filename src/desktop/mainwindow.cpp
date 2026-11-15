@@ -57,9 +57,11 @@ extern "C" {
 #include "desktop/toolwidgets/inspectorsettings.h"
 #include "desktop/toolwidgets/lasersettings.h"
 #include "desktop/toolwidgets/lassofillsettings.h"
+#include "desktop/toolwidgets/liquifysettings.h"
 #include "desktop/toolwidgets/rotationsettings.h"
 #include "desktop/toolwidgets/selectionsettings.h"
 #include "desktop/toolwidgets/transformsettings.h"
+#include "desktop/toolwidgets/zoomsettings.h"
 #include "desktop/utils/actionbuilder.h"
 #include "desktop/utils/connections.h"
 #include "desktop/utils/qtguicompat.h"
@@ -91,6 +93,7 @@ extern "C" {
 #include "libclient/export/animationsaverrunnable.h"
 #include "libclient/import/canvasloaderrunnable.h"
 #include "libclient/import/loadresult.h"
+#include "libclient/io/clipboard.h"
 #include "libclient/io/files.h"
 #include "libclient/io/pathinfo.h"
 #include "libclient/net/client.h"
@@ -409,6 +412,9 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	connect(m_dockToolSettings, &docks::ToolSettings::toolChanged, this, &MainWindow::toolChanged);
 	connect(m_dockToolSettings, &docks::ToolSettings::activeBrushChanged, this, &MainWindow::triggerUpdateLockState);
 	connect(
+		m_dockToolSettings, &docks::ToolSettings::requiresSelectionChanged,
+		this, &MainWindow::triggerUpdateLockState);
+	connect(
 		m_dockToolSettings, &docks::ToolSettings::showMessageRequested, this,
 		[this](const QString &message) {
 			m_canvasView->showPopupNotice(message);
@@ -532,14 +538,16 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 		m_dockToolSettings->annotationSettings(),
 		&tools::AnnotationSettings::selectionIdChanged, this,
 		&MainWindow::updateSelectTransformActions);
+	// clang-format on
 	connect(
 		m_dockToolSettings->annotationSettings(),
-		&tools::AnnotationSettings::showAnnotationsRequested, [this] {
+		&tools::AnnotationSettings::showAnnotationsRequested, this, [this] {
 			QAction *showannotations = getAction("showannotations");
 			if(!showannotations->isChecked()) {
 				showannotations->toggle();
 			}
 		});
+	// clang-format off
 	connect(
 		m_dockLayers, &docks::LayerList::layerSelected, m_chatbox,
 		&widgets::ChatBox::setCurrentLayer);
@@ -562,14 +570,16 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	connect(
 		m_dockBrushPalette, &docks::BrushPalette::editBrushRequested, this,
 		&MainWindow::showBrushSettingsDialogPreset);
+	// clang-format on
 	connect(
 		m_dockToolSettings->laserPointerSettings(),
-		&tools::LaserPointerSettings::showLaserTrailsRequested, [this] {
+		&tools::LaserPointerSettings::showLaserTrailsRequested, this, [this] {
 			QAction *showlasers = getAction("showlasers");
 			if(!showlasers->isChecked()) {
 				showlasers->toggle();
 			}
 		});
+	// clang-format off
 
 	// Network status changes
 	connect(m_doc, &Document::serverConnected, this, &MainWindow::onServerConnected);
@@ -1901,6 +1911,14 @@ void MainWindow::toggleProjectRecording(bool enabled)
 	}
 }
 
+void MainWindow::requestProjectSnapshot()
+{
+	canvas::CanvasModel *canvas = m_doc->canvas();
+	if(canvas && canvas->isProjectRecording()) {
+		canvas->paintEngine()->enqueueProjectSnapshotRequest();
+	}
+}
+
 void MainWindow::onProjectRecordingStarted()
 {
 	getAction("autorecord")->setChecked(true);
@@ -2413,9 +2431,7 @@ void MainWindow::handleAndroidScalingDialogShown()
 void MainWindow::handleAndroidScalingDialogDismissed()
 {
 	if(m_smallScreenMode) {
-		HudAction action;
-		action.type = HudAction::Type::None;
-		handleToggleAction(action);
+		sendNoneToggleAction();
 	} else {
 		m_restoreIntendedDockStateDebounce.start();
 	}
@@ -2437,9 +2453,7 @@ void MainWindow::showSmallScreenModePreview()
 {
 	if(m_smallScreenMode && DrawpileApp::isAndroidScalingDialogShown() &&
 	   !m_dockLayers->isVisible()) {
-		HudAction action;
-		action.type = HudAction::Type::ToggleLayer;
-		handleToggleAction(action);
+		sendToggleAction(int(HudAction::Type::ToggleLayer));
 	}
 }
 
@@ -2635,6 +2649,19 @@ bool MainWindow::event(QEvent *event)
 		m_viewStatusBar->showMessage(
 			static_cast<QStatusTipEvent *>(event)->tip());
 		return true;
+#ifdef Q_OS_ANDROID
+	case QEvent::KeyPress:
+		// When hitting the back key on Android, hide any open small screen mode
+		// stuff in response before closing the window.
+		if(m_smallScreenMode &&
+		   static_cast<const QKeyEvent *>(event)->key() == Qt::Key_Back &&
+		   (isAnyDockVisible() || m_chatbox->isVisible())) {
+			QTimer::singleShot(0, this, &MainWindow::sendNoneToggleAction);
+			event->accept();
+			return true;
+		}
+		break;
+#endif
 	case QEvent::KeyRelease: {
 		// Monitor key-up events to switch back from temporary tools/tool slots.
 		// A short tap of the tool switch shortcut switches the tool permanently
@@ -2765,8 +2792,8 @@ void MainWindow::loadCanvasStateFromFile(
 	progressDialog->setRange(0, 0);
 	progressDialog->setCancelButton(nullptr);
 	if(resume) {
-		progressDialog->setMinimumDuration(0);
 		progressDialog->setLabelText(tr("Resuming…"));
+		progressDialog->show();
 	} else {
 		progressDialog->setLabelText(tr("Opening file…"));
 		progressDialog->setMinimumDuration(500);
@@ -3227,7 +3254,7 @@ void MainWindow::showProjectPlaybackDialog(
 		Qt::DirectConnection);
 	connect(
 		m_projectPlaybackDialog, &dialogs::ProjectPlaybackDialog::destroyed,
-		[=] {
+		this, [=] {
 #ifndef __EMSCRIPTEN__
 			recordAction->setEnabled(true);
 #endif
@@ -5198,6 +5225,7 @@ void MainWindow::onFeatureAccessChange(DP_Feature feature, bool canUse)
 		m_dockToolSettings->fillSettings()->setFeatureAccess(canUse);
 		m_dockToolSettings->lassoFillSettings()->setFeatureAccess(canUse);
 		m_dockToolSettings->gradientSettings()->setFeatureAccess(canUse);
+		m_dockToolSettings->liquifySettings()->setFeatureAccess(canUse);
 		break;
 	case DP_FEATURE_LASER:
 		m_dockToolSettings->laserPointerSettings()->setFeatureAccess(canUse);
@@ -5779,11 +5807,13 @@ void MainWindow::updateSelectTransformActions()
 {
 	canvas::CanvasModel *canvas = m_doc->canvas();
 	canvas::TransformModel *transform = canvas ? canvas->transform() : nullptr;
-	bool haveTransform = transform && transform->isActive();
+	bool haveTransform = transform && transform->isTransformActive();
+	bool haveLiquify = transform && transform->isLiquifyActive();
 	bool canApplyTransform = haveTransform && transform->isDstQuadValid();
 	bool canStampTransform = canApplyTransform && transform->isStampable();
-	bool haveSelection = m_toolStateNormal && !haveTransform && canvas &&
-						 canvas->selection()->isValid();
+	bool canStampLiquify = haveLiquify && transform->isStampable();
+	bool haveSelection = m_toolStateNormal && !haveTransform && !haveLiquify &&
+						 canvas && canvas->selection()->isValid();
 	bool haveAnnotation =
 		getAction("tooltext")->isChecked() &&
 		m_dockToolSettings->annotationSettings()->selected() != 0;
@@ -5796,21 +5826,41 @@ void MainWindow::updateSelectTransformActions()
 	getAction("saveselection")->setEnabled(haveSelection);
 #endif
 
-	getAction("cutlayer")->setEnabled(haveSelection);
-	getAction("copylayer")->setEnabled(haveSelection);
+	QAction *copylayer = getAction(QStringLiteral("copylayer"));
+	QAction *cutlayer = getAction(QStringLiteral("cutlayer"));
+	cutlayer->setEnabled(haveSelection || canStampTransform || canStampLiquify);
+	copylayer->setEnabled(
+		haveSelection || canStampTransform || canStampLiquify);
 	getAction("copyvisible")->setEnabled(haveSelection);
 	getAction("copymerged")->setEnabled(haveSelection);
-	getAction("paste")->setEnabled(!haveTransform);
-	getAction("paste-centered")->setEnabled(!haveTransform);
-	getAction("pastefile")->setEnabled(!haveTransform);
-	getAction("stamp")->setEnabled(canStampTransform);
+	getAction("paste")->setEnabled(!haveTransform && !haveLiquify);
+	getAction("paste-centered")->setEnabled(!haveTransform && !haveLiquify);
+	getAction("pastefile")->setEnabled(!haveTransform && !haveLiquify);
+	QAction *stamp = getAction(QStringLiteral("stamp"));
+	stamp->setEnabled(canStampTransform || canStampLiquify);
+	if(haveTransform) {
+		copylayer->setText(tr("Cop&y Transform"));
+		cutlayer->setText(tr("Cu&t Transform"));
+		stamp->setText(tr("&Stamp Transform"));
+	} else if(haveLiquify) {
+		copylayer->setText(tr("Cop&y Liquify"));
+		cutlayer->setText(tr("Cu&t Liquify"));
+		stamp->setText(tr("&Stamp Liquify"));
+	} else {
+		copylayer->setText(tr("Cop&y From Layer"));
+		cutlayer->setText(tr("Cu&t From Layer"));
+		stamp->setText(tr("&Stamp Transform/Liquify"));
+	}
 	getAction("cleararea")->setEnabled(haveSelection || haveAnnotation);
 	getAction("selectall")->setEnabled(!haveTransform);
-	getAction("selectnone")->setEnabled(haveSelection || canApplyTransform);
+	getAction("selectnone")
+		->setEnabled(haveSelection || canApplyTransform || haveLiquify);
 	getAction("selectinvert")->setEnabled(haveSelection);
-	getAction("selectlayerbounds")->setEnabled(!haveTransform);
-	getAction("selectlayercontents")->setEnabled(!haveTransform);
-	getAction("selectalter")->setEnabled(haveSelection && !haveTransform);
+	getAction("selectlayerbounds")->setEnabled(!haveTransform && !haveLiquify);
+	getAction("selectlayercontents")
+		->setEnabled(!haveTransform && !haveLiquify);
+	getAction("selectalter")
+		->setEnabled(haveSelection && !haveTransform && !haveLiquify);
 	getAction("fillfgarea")->setEnabled(haveSelection);
 	getAction("recolorarea")->setEnabled(haveSelection);
 	getAction("colorerasearea")->setEnabled(haveSelection);
@@ -5825,18 +5875,21 @@ void MainWindow::updateSelectTransformActions()
 					  : tr("Cr&op canvas to selection…"));
 	getAction("starttransform")->setEnabled(haveSelection);
 	getAction("starttransformmask")->setEnabled(haveSelection);
+	getAction(QStringLiteral("startliquify"))->setEnabled(haveSelection);
 	getAction("transformmirror")->setEnabled(haveTransform);
 	getAction("transformflip")->setEnabled(haveTransform);
 	getAction("transformrotatecw")->setEnabled(haveTransform);
 	getAction("transformrotateccw")->setEnabled(haveTransform);
 	getAction("transformshrinktoview")->setEnabled(haveTransform);
 	getAction("showselectionmask")->setEnabled(!selectionEditActive);
-	m_dockToolSettings->selectionSettings()->setActionEnabled(haveSelection);
+	m_dockToolSettings->selectionSettings()->setActionsEnabled(haveSelection);
 	m_dockToolSettings->gradientSettings()->setSelectionValid(haveSelection);
 
 	HudHandler::ActionBar actionBar = HudHandler::ActionBar::None;
 	if(m_actionBarEnabled) {
-		if(haveTransform) {
+		if(haveLiquify) {
+			actionBar = HudHandler::ActionBar::Liquify;
+		} else if(haveTransform) {
 			actionBar = HudHandler::ActionBar::Transform;
 		} else if(haveSelection) {
 			actionBar = HudHandler::ActionBar::Selection;
@@ -5844,7 +5897,7 @@ void MainWindow::updateSelectTransformActions()
 	}
 	m_canvasView->hud()->setCurrentActionBar(actionBar);
 
-	if(!haveSelection || haveTransform) {
+	if(!haveSelection || haveTransform || haveLiquify) {
 		dialogs::SelectionAlterDialog *dlg =
 			findChild<dialogs::SelectionAlterDialog *>(
 				QStringLiteral("selectionalterdialog"),
@@ -5882,9 +5935,41 @@ void MainWindow::copyText()
 // clang-format on
 void MainWindow::paste()
 {
+	canvas::CanvasModel *canvas = m_canvasView->canvas();
+	if(!canvas || canvas->transform()->isActive()) {
+		return;
+	}
+
 	utils::ScopedOverrideCursor waitCursor;
-	const QMimeData *mimeData = Document::getClipboardData();
-	QImage img = Document::getClipboardImageData(mimeData);
+	const QMimeData *mimeData = io::clip::mimeData();
+
+	if(io::clip::TransformState state =
+		   io::clip::getTransformStateFrom(mimeData);
+	   !state.isNull()) {
+
+		QImage img = io::clip::getSourceImageFrom(mimeData);
+		if(!img.isNull()) {
+			m_dockToolSettings->startTransformPaste(
+				state.srcBounds,
+				img.convertToFormat(QImage::Format_ARGB32_Premultiplied),
+				&state);
+			return;
+		}
+	}
+
+	if(QByteArray liquifyData = io::clip::getLiquifyDataFrom(mimeData);
+	   !liquifyData.isEmpty()) {
+
+		QImage img = io::clip::getSourceImageFrom(mimeData);
+		if(!img.isNull()) {
+			m_dockToolSettings->startLiquifyPaste(
+				img.convertToFormat(QImage::Format_ARGB32_Premultiplied),
+				liquifyData);
+			return;
+		}
+	}
+
+	QImage img = io::clip::getImageFrom(mimeData);
 	if(!img.isNull()) {
 		QPoint pastepos;
 		bool pasteAtPos = false;
@@ -5915,9 +6000,14 @@ void MainWindow::paste()
 
 void MainWindow::pasteCentered()
 {
+	canvas::CanvasModel *canvas = m_canvasView->canvas();
+	if(!canvas || canvas->transform()->isActive()) {
+		return;
+	}
+
 	utils::ScopedOverrideCursor waitCursor;
-	const QMimeData *mimeData = Document::getClipboardData();
-	QImage img = Document::getClipboardImageData(mimeData);
+	const QMimeData *mimeData = io::clip::mimeData();
+	QImage img = io::clip::getImageFrom(mimeData);
 	if(!img.isNull()) {
 		pasteImage(img, nullptr, true);
 	}
@@ -6215,7 +6305,7 @@ void MainWindow::showLayoutsDialog()
 			dlg->setObjectName("layoutsdialog");
 			dlg->setAttribute(Qt::WA_DeleteOnClose);
 			connect(
-				dlg, &dialogs::LayoutsDialog::applyState,
+				dlg, &dialogs::LayoutsDialog::applyState, this,
 				[this](const QByteArray &state) {
 					if(!m_smallScreenMode) {
 						QScopedValueRollback<bool> updateRollback(
@@ -7126,7 +7216,7 @@ void MainWindow::setupActions()
 						  "the clipboard"))
 			.shortcut("Ctrl+Alt+C");
 	QAction *copylayer =
-		makeAction("copylayer", tr("Copy From &Layer"))
+		makeAction("copylayer", tr("Cop&y From Layer"))
 			.icon("edit-copy")
 			.statusTip(
 				tr("Copy selected area of the current layer to the clipboard"))
@@ -7465,13 +7555,28 @@ void MainWindow::setupActions()
 #else
 #	define ZOOM_IN_SHORTCUT QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")
 #endif
-	QAction *zoomin = makeAction("zoomin", tr("Zoom &In")).icon("zoom-in").shortcut(ZOOM_IN_SHORTCUT).autoRepeat();
-	QAction *zoomincenter = makeAction("zoomincenter", tr("Zoom In On Center")).noDefaultShortcut().autoRepeat();
-	QAction *zoomout = makeAction("zoomout", tr("Zoom &Out")).icon("zoom-out").shortcut(QKeySequence::ZoomOut).autoRepeat();
-	QAction *zoomoutcenter = makeAction("zoomoutcenter", tr("Zoom Out From Center")).noDefaultShortcut().autoRepeat();
-	QAction *zoomorig = makeAction("zoomone", tr("&Reset Zoom")).icon("zoom-original").shortcut(QKeySequence("ctrl+0"));
-	QAction *zoomorigcenter = makeAction("zoomonecenter", tr("Reset Zoom At Center")).noDefaultShortcut();
 	// clang-format on
+	QAction *zoomin = makeAction("zoomin", tr("Zoom &In"))
+						  .icon(QStringLiteral("drawpile_zoom_in"))
+						  .shortcut(ZOOM_IN_SHORTCUT)
+						  .autoRepeat();
+	QAction *zoomincenter = makeAction("zoomincenter", tr("Zoom In On Center"))
+								.noDefaultShortcut()
+								.autoRepeat();
+	QAction *zoomout = makeAction("zoomout", tr("Zoom &Out"))
+						   .icon(QStringLiteral("drawpile_zoom_out"))
+						   .shortcut(QKeySequence::ZoomOut)
+						   .autoRepeat();
+	QAction *zoomoutcenter =
+		makeAction("zoomoutcenter", tr("Zoom Out From Center"))
+			.noDefaultShortcut()
+			.autoRepeat();
+	QAction *zoomorig = makeAction("zoomone", tr("&Reset Zoom"))
+							.icon(QStringLiteral("drawpile_zoom_original"))
+							.shortcut(QKeySequence("ctrl+0"));
+	QAction *zoomorigcenter =
+		makeAction("zoomonecenter", tr("Reset Zoom At Center"))
+			.noDefaultShortcut();
 	QAction *zoomfit = makeAction("zoomfit", tr("&Fit Canvas"))
 						   .icon("zoom-select")
 						   .noDefaultShortcut();
@@ -7613,9 +7718,7 @@ void MainWindow::setupActions()
 
 	connect(toggleChat, &QAction::triggered, this, [this, cfg](bool show) {
 		if(m_smallScreenMode) {
-			HudAction action;
-			action.type = HudAction::Type::ToggleChat;
-			handleToggleAction(action);
+			sendToggleAction(int(HudAction::Type::ToggleChat));
 		} else {
 			if(show) {
 				restoreChatSplitterState(cfg);
@@ -8007,7 +8110,7 @@ void MainWindow::setupActions()
 	layerMenu->addAction(layerUncheckAll);
 
 	connect(
-		layerMenu, &QMenu ::aboutToShow, m_dockLayers,
+		layerMenu, &QMenu::aboutToShow, m_dockLayers,
 		&docks::LayerList::updateLayerColorMenuIcon);
 
 	//
@@ -8035,7 +8138,7 @@ void MainWindow::setupActions()
 		//: "Feather" is a verb here, referring to blurring the selection.
 		makeAction("selectalter", tr("&Expand/Shrink/Feather Selection"))
 			.noDefaultShortcut()
-			.icon("zoom-select");
+			.icon(QStringLiteral("zoom-in"));
 	QAction *fillfgarea = makeAction("fillfgarea", tr("Fill Selection"))
 							  .shortcut(CTRL_KEY | Qt::Key_Comma);
 	QAction *recolorarea = makeAction("recolorarea", tr("Recolor Selection"))
@@ -8065,6 +8168,12 @@ void MainWindow::setupActions()
 			.statusTip(
 				tr("Transform only the selection mask itself, switch "
 				   "back tools afterwards"));
+	QAction *startliquify =
+		makeAction("startliquify", tr("Li&quify"))
+			.shortcut("Q")
+			.icon("drawpile_liquify")
+			.statusTip(
+				tr("Liquify the selection, switch back tools afterwards"));
 	QAction *transformmirror =
 		makeAction("transformmirror", tr("&Mirror Transform"))
 			.icon("drawpile_mirror")
@@ -8091,7 +8200,9 @@ void MainWindow::setupActions()
 			.icon("zoom-out")
 			.noDefaultShortcut();
 	QAction *stamp =
-		makeAction("stamp", tr("&Stamp Transform")).shortcut("Ctrl+T");
+		makeAction("stamp", tr("&Stamp Transform/Liquify"))
+			.statusTip(tr("Apply the transform or liquify and keep going"))
+			.shortcut("Ctrl+T");
 	QAction *editselection =
 		makeAction("editselection", tr("Dra&w on Selection"))
 			.checkable()
@@ -8160,11 +8271,17 @@ void MainWindow::setupActions()
 			&MainWindow::fillAreaWithBlendMode, this,
 			DP_BLEND_MODE_DARK_TO_ALPHA));
 	connect(
+		stamp, &QAction::triggered, m_doc->toolCtrl(),
+		&tools::ToolController::stamp);
+	connect(
 		starttransform, &QAction::triggered, m_dockToolSettings,
 		&docks::ToolSettings::startTransformMoveActiveLayer);
 	connect(
 		starttransformmask, &QAction::triggered, m_dockToolSettings,
 		&docks::ToolSettings::startTransformMoveMask);
+	connect(
+		startliquify, &QAction::triggered, m_dockToolSettings,
+		&docks::ToolSettings::startLiquifyActiveLayer);
 	connect(
 		editselection, &QAction::triggered, m_doc->toolCtrl(),
 		&tools::ToolController::setSelectionEditActive);
@@ -8199,6 +8316,7 @@ void MainWindow::setupActions()
 	selectMenu->addSeparator();
 	selectMenu->addAction(starttransform);
 	selectMenu->addAction(starttransformmask);
+	selectMenu->addAction(startliquify);
 	selectMenu->addAction(transformmirror);
 	selectMenu->addAction(transformflip);
 	selectMenu->addAction(transformrotatecw);
@@ -8213,7 +8331,8 @@ void MainWindow::setupActions()
 
 	m_dockToolSettings->gradientSettings()->setActions(
 		selectall, selectlayerbounds);
-	m_dockToolSettings->selectionSettings()->setAction(starttransform);
+	m_dockToolSettings->selectionSettings()->setActions(
+		starttransform, startliquify);
 	m_dockToolSettings->transformSettings()->setActions(
 		transformmirror, transformflip, transformrotatecw, transformrotateccw,
 		transformshrinktoview, stamp);
@@ -8543,7 +8662,7 @@ void MainWindow::setupActions()
 			animationGroupMenu,
 			animationDuplicateMenu,
 		},
-		m_layerViewNormal, m_layerViewCurrentFrame, showFlipbook);
+		m_layerViewCurrentFrame, showFlipbook);
 	m_dockToolSettings->fillSettings()->setActions(layerAutomaticAlphaPreserve);
 
 	connect(showFlipbook, &QAction::triggered, this, &MainWindow::showFlipbook);
@@ -8646,6 +8765,13 @@ void MainWindow::setupActions()
 	QAction *lassotool = makeAction("toolselectpolygon", tr("&Lasso Select")).icon("edit-select-lasso").statusTip(tr("Select a free-form area")).shortcut("D").checkable();
 	QAction *magicwandtool = makeAction("toolselectmagicwand", tr("&Magic Wand Select")).icon("drawpile_magicwand").statusTip(tr("Select areas with similar colors")).shortcut("W").checkable();
 	QAction *transformtool = makeAction("tooltransform", tr("&Transform Tool")).icon("drawpile_transform").statusTip(tr("Transform selection")).noDefaultShortcut().checkable();
+	// clang-format on
+	QAction *liquifytool = makeAction("toolliquify", tr("&Liquify"))
+							   .icon(QStringLiteral("drawpile_liquify"))
+							   .statusTip(tr("Liquify selection"))
+							   .noDefaultShortcut()
+							   .checkable();
+	// clang-format off
 	QAction *pantool = makeAction("toolpan", tr("Pan")).icon("hand").statusTip(tr("Pan canvas view")).shortcut("P").checkable();
 	QAction *zoomtool = makeAction("toolzoom", tr("Zoom")).icon("edit-find").statusTip(tr("Zoom the canvas view")).shortcut("Z").checkable();
 	QAction *rotationtool = makeAction("toolrotation", tr("Rotation")).icon("drawpile_rotate").statusTip(tr("Rotate the canvas view")).shortcut("Shift+R").checkable();
@@ -8670,6 +8796,7 @@ void MainWindow::setupActions()
 	m_drawingtools->addAction(lassotool);
 	m_drawingtools->addAction(magicwandtool);
 	m_drawingtools->addAction(transformtool);
+	m_drawingtools->addAction(liquifytool);
 	m_drawingtools->addAction(pantool);
 	m_drawingtools->addAction(zoomtool);
 	m_drawingtools->addAction(rotationtool);
@@ -8726,6 +8853,64 @@ void MainWindow::setupActions()
 	QMenu *toolshortcuts = toolsmenu->addMenu(tr("&Shortcuts"));
 	QMenu *deselectshortcuts = toolsmenu->addMenu(tr("Deselect Shortcuts"));
 	deselectshortcuts->addActions(m_deselecttools->actions());
+
+	QAction *liquifyMove = makeAction("liquifymove", tr("Move", "liquify"))
+							   .icon(QStringLiteral("drawpile_liquify_move"))
+							   .statusTip(tr("Move", "liquify"))
+							   .checkable()
+							   .checked()
+							   .noDefaultShortcut();
+	QAction *liquifyRotateLeft =
+		makeAction(
+			"liquifyrotateleft", tr("Rotate counter-clockwise", "liquify"))
+			.icon(QStringLiteral("drawpile_liquify_rotate_left"))
+			.statusTip(tr("Rotate counter-clockwise", "liquify"))
+			.checkable()
+			.noDefaultShortcut();
+	QAction *liquifyRotateRight =
+		makeAction("liquifyrotateright", tr("Rotate clockwise", "liquify"))
+			.icon(QStringLiteral("drawpile_liquify_rotate_right"))
+			.statusTip(tr("Rotate clockwise", "liquify"))
+			.checkable()
+			.noDefaultShortcut();
+	QAction *liquifyExpand =
+		makeAction("liquifyexpand", tr("Expand", "liquify"))
+			.icon(QStringLiteral("drawpile_liquify_expand"))
+			.statusTip(tr("Expand", "liquify"))
+			.checkable()
+			.noDefaultShortcut();
+	QAction *liquifyShrink =
+		makeAction("liquifyshrink", tr("Shrink", "liquify"))
+			.icon(QStringLiteral("drawpile_liquify_shrink"))
+			.statusTip(tr("Shrink", "liquify"))
+			.checkable()
+			.noDefaultShortcut();
+	QAction *liquifySmoothe =
+		makeAction("liquifysmoothe", tr("Smoothe", "liquify"))
+			.icon(QStringLiteral("drawpile_liquify_smoothe"))
+			.statusTip(tr("Smoothe", "liquify"))
+			.checkable()
+			.noDefaultShortcut();
+	QAction *liquifyErase = makeAction("liquifyerase", tr("Erase", "liquify"))
+								.icon(QStringLiteral("drawpile_liquify_erase"))
+								.statusTip(tr("Erase", "liquify"))
+								.checkable()
+								.noDefaultShortcut();
+	QAction *liquifyOffset =
+		makeAction("liquifyoffset", tr("Reposition", "liquify"))
+			.icon(QStringLiteral("hand"))
+			.statusTip(tr("Move the position of the liquified area", "liquify"))
+			.checkable()
+			.noDefaultShortcut();
+	QActionGroup *liquifyOperations = new QActionGroup(this);
+	liquifyOperations->addAction(liquifyMove);
+	liquifyOperations->addAction(liquifyRotateLeft);
+	liquifyOperations->addAction(liquifyRotateRight);
+	liquifyOperations->addAction(liquifyExpand);
+	liquifyOperations->addAction(liquifyShrink);
+	liquifyOperations->addAction(liquifySmoothe);
+	liquifyOperations->addAction(liquifyErase);
+	liquifyOperations->addAction(liquifyOffset);
 
 	QMenu *devtoolsmenu = toolsmenu->addMenu(tr("Developer Tools"));
 	// clang-format off
@@ -8825,11 +9010,17 @@ void MainWindow::setupActions()
 				QStringLiteral("Retain project recordings"))
 				.checkable()
 				.noDefaultShortcut();
+		QAction *requestProjectSnapshot =
+			makeAction(
+				"requestprojectsnapshot",
+				QStringLiteral("Request project snapshot"))
+				.noDefaultShortcut();
 		devtoolsmenu->addSeparator();
 		devtoolsmenu->addAction(artificialLag);
 		devtoolsmenu->addAction(artificialDisconnect);
 		devtoolsmenu->addAction(causeCrash);
 		devtoolsmenu->addAction(retainProjectRecordings);
+		devtoolsmenu->addAction(requestProjectSnapshot);
 		connect(
 			artificialLag, &QAction::triggered, this,
 			&MainWindow::setArtificialLag);
@@ -8837,6 +9028,9 @@ void MainWindow::setupActions()
 			artificialDisconnect, &QAction::triggered, this,
 			&MainWindow::setArtificialDisconnect);
 		connect(causeCrash, &QAction::triggered, this, &MainWindow::causeCrash);
+		connect(
+			requestProjectSnapshot, &QAction::triggered, this,
+			&MainWindow::requestProjectSnapshot);
 	}
 	// clang-format off
 
@@ -9021,6 +9215,9 @@ void MainWindow::setupActions()
 		layerAutomaticAlphaPreserve, maskselection);
 	m_dockToolSettings->gradientSettings()->setActions(
 		layerAutomaticAlphaPreserve);
+	m_dockToolSettings->liquifySettings()->setActions(liquifyOperations, stamp);
+	m_dockToolSettings->zoomSettings()->setActions(
+		zoomin, zoomorig, zoomfit, zoomout);
 	m_dockToolSettings->rotationSettings()->setActions(
 		rotateccw, rotateorig, rotatecw);
 	m_dockBrushPalette->setActions(
@@ -9073,13 +9270,13 @@ void MainWindow::setupActions()
 #endif
 
 
-	connect(homepage, &QAction::triggered, &MainWindow::homepage);
-	connect(donate, &QAction::triggered, &MainWindow::donate);
-	connect(about, &QAction::triggered, &MainWindow::about);
-	connect(aboutqt, &QAction::triggered, &QApplication::aboutQt);
+	connect(homepage, &QAction::triggered, this, &MainWindow::homepage);
+	connect(donate, &QAction::triggered, this, &MainWindow::donate);
+	connect(about, &QAction::triggered, this, &MainWindow::about);
+	connect(aboutqt, &QAction::triggered, this, &QApplication::aboutQt);
 #ifdef Q_OS_MACOS
-	connect(macabout, &QAction::triggered, &MainWindow::about);
-	connect(macaboutqt, &QAction::triggered, &QApplication::aboutQt);
+	connect(macabout, &QAction::triggered, this, &MainWindow::about);
+	connect(macaboutqt, &QAction::triggered, this, &QApplication::aboutQt);
 #endif
 
 #ifndef __EMSCRIPTEN__
@@ -9096,7 +9293,7 @@ void MainWindow::setupActions()
 		std::bind(&MainWindow::showTouchTestDialog, this, this));
 	// clang-format off
 
-	connect(showlogfile, &QAction::triggered, [this] {
+	connect(showlogfile, &QAction::triggered, this, [this] {
 		QString logFilePath = utils::logFilePath();
 		QFile logFile{logFilePath};
 		if(!logFile.exists()) {
@@ -9434,18 +9631,18 @@ void MainWindow::setupHud()
 			//: Refers to expanding or shrinking the selection.
 			getAction(QStringLiteral("selectalter")), tr("Expand/Shrink")),
 		ActionBarItem::Button(getAction(QStringLiteral("starttransform"))),
-#ifdef __EMSCRIPTEN__
-		ActionBarItem::Button(
-			getAction(QStringLiteral("downloadselection")),
-			QIcon::fromTheme(QStringLiteral("document-export"))),
-#else
-		ActionBarItem::Button(
-			//: Refers to saving the selected area as an image.
-			getAction(QStringLiteral("saveselection")),
-			QIcon::fromTheme(QStringLiteral("document-export"))),
-#endif
+		ActionBarItem::Button(getAction(QStringLiteral("startliquify"))),
 	});
 	selectionActionBar->setOverflowMenuActions({
+#ifdef __EMSCRIPTEN__
+		getAction(QStringLiteral("downloadselection")),
+#else
+		getAction(QStringLiteral("saveselection")),
+#endif
+#ifdef DRAWPILE_TIMELAPSE_DIALOG
+		getAction(QStringLiteral("maketimelapse")),
+#endif
+		nullptr,
 		getAction(QStringLiteral("selectall")),
 		getAction(QStringLiteral("selectlayerbounds")),
 		getAction(QStringLiteral("selectlayercontents")),
@@ -9454,9 +9651,6 @@ void MainWindow::setupHud()
 		getAction(QStringLiteral("fillfgarea")),
 		getAction(QStringLiteral("recolorarea")),
 		getAction(QStringLiteral("selectcrop")),
-#ifdef DRAWPILE_TIMELAPSE_DIALOG
-		getAction(QStringLiteral("maketimelapse")),
-#endif
 		nullptr,
 		getAction(QStringLiteral("showselectionmask")),
 		getAction(QStringLiteral("editselection")),
@@ -9487,9 +9681,58 @@ void MainWindow::setupHud()
 	transformActionBar->setOverflowMenuActions({
 		getAction(QStringLiteral("cancelaction")),
 		getAction(QStringLiteral("selectnone")),
-		nullptr,
 		getAction(QStringLiteral("transformshrinktoview")),
+		nullptr,
+		m_dockToolSettings->transformSettings()->showPivotAction(),
+		m_dockToolSettings->transformSettings()->resetPivotAction(),
+		nullptr,
 		getAction(QStringLiteral("stamp")),
+		getAction(QStringLiteral("copylayer")),
+		getAction(QStringLiteral("cutlayer")),
+		nullptr,
+		locationMenuAction,
+		disableAction,
+	});
+
+	ActionBarItem *liquifyActionBar = hud->liquifyActionBar();
+	liquifyActionBar->setButtons({
+		ActionBarItem::Button(
+			getAction(QStringLiteral("finishstroke")), tr("Apply"),
+			QIcon::fromTheme(QStringLiteral("checkbox"))),
+		ActionBarItem::Button(
+			getAction(QStringLiteral("liquifymove")), tr("Move", "liquify"),
+			QIcon::fromTheme(QStringLiteral("drawpile_liquify_move"))),
+		ActionBarItem::Button(
+			getAction(QStringLiteral("liquifyrotateleft")),
+			tr("Rotate left", "liquify"),
+			QIcon::fromTheme(QStringLiteral("drawpile_liquify_rotate_left"))),
+		ActionBarItem::Button(
+			getAction(QStringLiteral("liquifyrotateright")),
+			tr("Rotate right", "liquify"),
+			QIcon::fromTheme(QStringLiteral("drawpile_liquify_rotate_right"))),
+		ActionBarItem::Button(
+			getAction(QStringLiteral("liquifyexpand")), tr("Expand", "liquify"),
+			QIcon::fromTheme(QStringLiteral("drawpile_liquify_expand"))),
+		ActionBarItem::Button(
+			getAction(QStringLiteral("liquifyshrink")), tr("Shrink", "liquify"),
+			QIcon::fromTheme(QStringLiteral("drawpile_liquify_shrink"))),
+		ActionBarItem::Button(
+			getAction(QStringLiteral("liquifysmoothe")),
+			tr("Smoothe", "liquify"),
+			QIcon::fromTheme(QStringLiteral("drawpile_liquify_smoothe"))),
+		ActionBarItem::Button(
+			getAction(QStringLiteral("liquifyerase")), tr("Erase", "liquify"),
+			QIcon::fromTheme(QStringLiteral("drawpile_liquify_erase"))),
+	});
+	liquifyActionBar->setOverflowMenuActions({
+		getAction(QStringLiteral("liquifyoffset")),
+		nullptr,
+		getAction(QStringLiteral("cancelaction")),
+		getAction(QStringLiteral("selectnone")),
+		nullptr,
+		getAction(QStringLiteral("stamp")),
+		getAction(QStringLiteral("copylayer")),
+		getAction(QStringLiteral("cutlayer")),
 		nullptr,
 		locationMenuAction,
 		disableAction,
@@ -9999,6 +10242,29 @@ bool MainWindow::shouldShowDialogMaximized() const
 #else
 	return m_smallScreenMode && isMaximized();
 #endif
+}
+
+bool MainWindow::isAnyDockVisible() const
+{
+	for(QDockWidget *dw :
+		findChildren<QDockWidget *>(QString(), Qt::FindDirectChildrenOnly)) {
+		if(dw->isVisible()) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void MainWindow::sendNoneToggleAction()
+{
+	sendToggleAction(int(HudAction::Type::None));
+}
+
+void MainWindow::sendToggleAction(int type)
+{
+	HudAction action;
+	action.type = HudAction::Type(type);
+	handleToggleAction(action);
 }
 
 void MainWindow::startIntendedDockStateDebounce()

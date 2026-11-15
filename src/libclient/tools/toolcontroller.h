@@ -22,6 +22,7 @@ class CanvasModel;
 
 namespace drawdance {
 class BrushEngine;
+class LiquifyWorker;
 class StrokeEngine;
 class StrokeWorker;
 }
@@ -32,6 +33,7 @@ class Client;
 
 namespace tools {
 
+class LiquifyTool;
 class Tool;
 class TransformTool;
 
@@ -183,6 +185,9 @@ public:
 	void setTransformParams(bool accurate, int interpolation);
 	int transformInterpolation() const { return m_transformInterpolation; }
 
+	void setLiquifyParams(int interpolation);
+	int liquifyInterpolation() const { return m_liquifyInterpolation; }
+
 	const SelectionParams &selectionParams() const { return m_selectionParams; }
 	void setSelectionParams(const SelectionParams &selectionParams)
 	{
@@ -195,6 +200,7 @@ public:
 
 	Tool *getTool(Tool::Type type);
 	TransformTool *transformTool();
+	LiquifyTool *liquifyTool();
 
 	//! Is there a multipart drawing operation in progress?
 	bool isMultipartDrawing() const;
@@ -221,6 +227,10 @@ public:
 	void setStrokeEngineParams(
 		drawdance::StrokeEngine &se, int stabilizerSampleCount = 0,
 		int smoothing = 0);
+	void setLiquifyWorkerStrokeParams(
+		drawdance::LiquifyWorker &lw, qreal size, qreal amount, qreal hardness,
+		qreal spacing, bool sizePressure, bool amountPressure,
+		bool hardnessPressure);
 
 	/**
 	 * Runs the given task in the background. Takes over the task using
@@ -270,6 +280,7 @@ public slots:
 	//! End a stroke
 	void endDrawing(bool constrain, bool center);
 
+	bool copyCut(bool cut);
 	void undoRedo(bool redo);
 
 	/**
@@ -294,6 +305,8 @@ public slots:
 	//! Used to finish fills when merging layers or similar.
 	void flushPreviewedActions();
 
+	void stamp();
+
 signals:
 	void activeToolChanged(int type);
 	void toolCapabilitiesChanged(unsigned int capabilities);
@@ -302,7 +315,8 @@ signals:
 	void activeAnnotationChanged(int annotationId);
 	void activeBrushChanged(const brushes::ActiveBrush &);
 	bool selectionEditActiveChanged(bool selectionEditActive);
-	void transformToolStateChanged(int mode, int handle, bool dragging);
+	void transformToolStateChanged(
+		int mode, int handle, bool dragging, bool pivotShown);
 	void modelChanged(canvas::CanvasModel *model);
 	void globalSmoothingChanged(int smoothing);
 	void stabilizerUseBrushSampleCountChanged(bool useBrushSampleCount);
@@ -315,7 +329,9 @@ signals:
 	void showColorPickRequested(int source, const QPointF &pos);
 	void hideColorPickRequested();
 	void panRequested(int x, int y);
-	void zoomRequested(const QRect &rect, int steps);
+	void zoomStepsRequested(int steps, QPointF pos);
+	void zoomToRectRequested(QRect rect);
+	void scrubZoomRequested(qreal delta, QPointF pos);
 	void resetRotationToolRequested(int rotationMode);
 	void moveRotationToolRequested(
 		const QPoint &point, const QPoint &lastPoint, bool invert);
@@ -350,6 +366,9 @@ private slots:
 		const QSet<int> &layerIds, const QRect &maskBounds, const QImage &mask);
 	void clearTransformCutPreview();
 	void clearTransformPreviews();
+	void handleLiquifyStamp();
+	void handleLiquifyCopyCut(bool cut);
+	void cancelLiquify();
 	void notifyAsyncExecutionFinished(Task *task);
 
 private:
@@ -405,6 +424,7 @@ private:
 
 	bool m_transformPreviewAccurate;
 	int m_transformInterpolation;
+	int m_liquifyInterpolation;
 	int m_transformPreviewIdsUsed;
 	Tool::BeginParams m_hotSwapParams;
 	SelectionParams m_selectionParams;

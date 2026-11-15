@@ -447,6 +447,7 @@ private:
 	void startRecording();
 	void stopProjectRecording();
 	void toggleProjectRecording(bool enabled);
+	void requestProjectSnapshot();
 	void onProjectRecordingStarted();
 	void onProjectRecordingStopped(bool notify);
 	void setProjectRecordingSizeLimitInBytes(size_t sizeLimitInBytes);
@@ -528,6 +529,9 @@ private:
 	void switchInterfaceMode(bool smallScreenMode);
 	void updateSmallScreenToolBarVisibility();
 	bool shouldShowDialogMaximized() const;
+	bool isAnyDockVisible() const;
+	void sendNoneToggleAction();
+	void sendToggleAction(int type);
 
 	void startIntendedDockStateDebounce();
 	void updateIntendedDockState();

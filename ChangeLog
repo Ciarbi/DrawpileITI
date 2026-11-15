@@ -1,9 +1,40 @@
-Unreleased Version 2.3.1-pre
+Unreleased Version 2.3.2-pre
+ * Feature: Angle the fixed color wheel triangle to match what other programs do, making it point to the right. Thanks resttime and Glax for contributing.
+ * Feature: Liquify tool, also known as warp. Includes a factor slider and stamping to let you create in-between frames for animations. Thanks avolaki, BulletPepper, BillyBuppie, kitty, Myathingoss, Nargle, rowann, Valecita and probably others for suggesting; Blozzopm and Bonbli for finding issues.
+ * Fix: Split up commands from old recordings that end up too large after converting them to the current format. This manifested as "error -503" when trying to play them back. Thanks Soul for reporting.
+ * Fix: Don't crash when deserializing invalid compatibility messages or tiles from project files. Thanks cow for reporting.
+ * Fix: Fall back to cutting and pasting images when scaling them beyond twice the canvas size instead of canceling the transform. Thanks eliasa for reporting.
+ * Fix: Properly save and load local layer and track states from project files that were spawned by saving from another project file. Thanks TGS for reporting.
+ * Feature: Make Drawpile build on FreeBSD. Thanks yurivict for contributing.
+ * Feature: Try a bit harder to keep dppr file creation time consistent. May not work on all systems, file times are unreliable. Thanks Daorf for suggesting.
+ * Feature: Allow copying and pasting transforms and liquifies. Thanks BulletPepper for suggesting.
+ * Feature: Add pivot point to transforms. You can toggle this in the transform tool settings menu at the top-left. Double-clicking the point resets it. Thanks Aries Raenidaz, Bro, BulletPepper, GreenDyno and tiar for suggesting.
+ * Feature: Allow holding Alt to switch timeline frames by scrolling, Ctrl+Alt to scroll within the valid frame area. Thanks Ben for suggesting.
+ * Fix: Don't gray out send button in chat, the status of the chatbox is too unreliable on some devices. Clicking it while there's no message entered will simply not send anything. Thanks dAVePAGE for reporting.
+
+2026-10-21 Version 2.3.1
  * Fix: Make dock tab icons show up properly on Qt 6.11, they could end up blank there.
  * Fix: Don't skip initial command when playing back recordings. This caused the canvas size command to be skipped on old converted recordings, meaning its size stayed at zero and nothing would play. Thanks dango for reporting.
  * Server Feature: Allow new sessions to clobber empty, non-persistent, lingering sessions. Server owners can enable this to prevent "server is full" errors that would resolve themselves by waiting a few minutes for these lingering sessions to time out. Sessions with the lowest time spent drawing are terminated first. Thanks Bluestrings for suggesting.
  * Fix: Make hitting "save" after joining a session in the same window not save over the save file from a previous session in the same window. Unless you are reconnecting to the same session, in which case it will save over the file as it should. The logic for this was reversed from what it should be. Thanks Bonbli and D'mitri for reporting.
  * Fix: Also select layers when multiple key frames are selected.
+ * Fix: Properly select layers when switching focused tracks when the selected frame was already visible.
+ * Fix: Revert default save format to the new default even if it has been changed before, since it's better to make you change it again than lose timelapse data. Thanks Sheepolution for reporting.
+ * Fix: A crash on Windows when unchecking the show conflicts checkbox while still editing a shortcut. Thanks yellow circle for reporting.
+ * Fix: Make animation playback not get stuck when switching from a reversed range to a normal one without refereshing.
+ * Fix: Properly apply the parent group's opacity in the rendered animation as well, rather than just on the canvas.
+ * Feature: On Android, hide any open docks in small screen mode when pressing the back button before closing the main window. Thanks anonymous for suggesting.
+ * Fix: Make start screen take less horizontal space in small screen mode. Thanks anonymous for reporting.
+ * Feature: Remove the "Normal View" button from the timeline header, since you can just press the frame view button to exit it. This makes the timeline fit better on small screens.
+ * Feature: Add a drag zoom mode to the zoom tool. This is the default, since it's more useful and consistent with the rotation and pan tools. You can still use the select zoom by right-clicking, holding the constrain key (Shift by default) or switching the mode of the tool. Thanks Shuko for suggesting.
+ * Feature: Give the zoom tool nice header buttons to zoom in, out, fit and reset.
+ * Fix: Make the zoom tool behave more predictably, it now doesn't do weird stuff like letting you select an area and then zooming out on it.
+ * Fix: Give better icons to zoom in, zoom out and reset zoom, so that they don't all just look like rectangles at a glance.
+ * Feature: Handle Lenovo Tab stylus presses on Android by translating them to F26 to F30. Thanks Moody2357 for helping to figure this out.
+ * Fix: Properly indicate that the previous session is being resumed on Android. Thanks tiar for reporting.
+ * Fix: Correctly restore local state like layer visibility when resuming a session with a snapshot on Android. Thanks tiar for reporting.
+ * Fix: Work around the Wacom Movinkpad update showing a cursor when using the stylus that will flicker out of existence every time you press down the stylus. It will now show no cursor for the stylus, as it did before. Thanks Sylvanticus for reporting.
+ * Feature: Add some new brushes in the Drawpile category and a new Secret's Brushes category with ribbons, halftones and more provided by Blozzom.
 
 2026-09-22 Version 2.3.1-beta.2
  * Fix: Make ratchet rotation canvas shortcut work properly when the canvas is mirrored or flipped. Thanks Bovy for reporting.

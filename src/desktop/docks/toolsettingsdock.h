@@ -5,6 +5,13 @@
 #include "libclient/tools/tool.h"
 
 class QStackedWidget;
+class TransformQuad;
+
+namespace io {
+namespace clip {
+struct TransformState;
+}
+}
 
 namespace tools {
 class AnnotationSettings;
@@ -15,6 +22,7 @@ class GradientSettings;
 class InspectorSettings;
 class LaserPointerSettings;
 class LassoFillSettings;
+class LiquifySettings;
 class PanSettings;
 class RotationSettings;
 class SelectionSettings;
@@ -59,6 +67,7 @@ public:
 	tools::InspectorSettings *inspectorSettings();
 	tools::LaserPointerSettings *laserPointerSettings();
 	tools::LassoFillSettings *lassoFillSettings();
+	tools::LiquifySettings *liquifySettings();
 	tools::PanSettings *panSettings();
 	tools::RotationSettings *rotationSettings();
 	tools::SelectionSettings *selectionSettings();
@@ -137,7 +146,11 @@ public slots:
 
 	void startTransformMoveActiveLayer();
 	void startTransformMoveMask();
-	void startTransformPaste(const QRect &srcBounds, const QImage &image);
+	void startTransformPaste(
+		const QRect &srcBounds, const QImage &image,
+		const io::clip::TransformState *state = nullptr);
+	void startLiquifyActiveLayer();
+	void startLiquifyPaste(const QImage &image, const QByteArray &liquifyData);
 
 signals:
 	//! This signal is emitted when the current tool changes its size
@@ -162,6 +175,7 @@ signals:
 	void toolChanged(tools::Tool::Type tool);
 
 	void activeBrushChanged();
+	void requiresSelectionChanged();
 
 	void showMessageRequested(const QString &message);
 
@@ -171,7 +185,7 @@ private:
 	void selectTool(tools::Tool::Type tool);
 	void startSelection(int type);
 	void startTransformMove(bool onlyMask, bool startMove, bool quickMove);
-	void clearTemporaryTransform();
+	void clearTemporaryTools();
 	void quickAdjustCurrent1(qreal adjustment, bool wheel);
 	void quickAdjustCurrent2(qreal adjustment, bool wheel);
 	void quickAdjustCurrent3(qreal adjustment, bool wheel);

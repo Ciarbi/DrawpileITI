@@ -8,6 +8,7 @@ class KisSliderSpinBox;
 class QAction;
 class QButtonGroup;
 class QComboBox;
+class QMenu;
 class QPushButton;
 
 namespace canvas {
@@ -35,10 +36,14 @@ public:
 
 	bool affectsCanvas() override { return true; }
 	bool affectsLayer() override { return false; }
+	bool requiresSelection() override { return !m_hadTransform; }
 
 	void setActions(
 		QAction *mirror, QAction *flip, QAction *rotatecw, QAction *rotateccw,
 		QAction *shrinktoview, QAction *stamp);
+
+	QAction *showPivotAction() { return m_showPivotAction; }
+	QAction *resetPivotAction() { return m_resetPivotAction; }
 
 	void setCanvasView(view::CanvasWrapper *canvasView)
 	{
@@ -63,6 +68,7 @@ public:
 signals:
 	void blendModeChanged(int blendMode);
 	void opacityChanged(qreal opacity);
+	void requiresSelectionChanged();
 
 protected:
 	QWidget *createUiWidget(QWidget *parent) override;
@@ -89,9 +95,14 @@ private:
 	void updateOpacity(int value);
 	void setOpacity(qreal opacity);
 
+	void resetPivot();
+
 	TransformTool *tool();
 
 	QWidget *m_headerWidget = nullptr;
+	QMenu *m_headerMenu = nullptr;
+	QAction *m_showPivotAction = nullptr;
+	QAction *m_resetPivotAction = nullptr;
 	widgets::GroupedToolButton *m_mirrorButton = nullptr;
 	widgets::GroupedToolButton *m_flipButton = nullptr;
 	widgets::GroupedToolButton *m_rotateCwButton = nullptr;
@@ -117,6 +128,7 @@ private:
 	view::CanvasWrapper *m_canvasView = nullptr;
 	qreal m_quickAdjust2 = 0.0;
 	bool m_handleButtonsVisible = true;
+	bool m_hadTransform = false;
 };
 
 }

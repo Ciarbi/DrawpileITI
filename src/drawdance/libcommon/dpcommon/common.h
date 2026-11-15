@@ -46,6 +46,8 @@
 #        define DP_PLATFORM "darwin"
 #    elif defined(__linux__)
 #        define DP_PLATFORM "linux"
+#    elif defined(__FreeBSD__)
+#        define DP_PLATFORM "freebsd"
 #    elif defined(__HAIKU__)
 #        define DP_PLATFORM "haiku"
 #    else
@@ -121,8 +123,23 @@
 #ifdef _MSC_VER
 typedef long double DP_max_align_t;
 #    define DP_FORCE_INLINE DP_INLINE __forceinline
+#    define DP_DEBUG_BREAK() \
+        do {                 \
+            __debugbreak();  \
+        } while (0)
 #else
 typedef max_align_t DP_max_align_t;
+#    if defined(DP_CPU_X64)
+#        define DP_DEBUG_BREAK()               \
+            do {                               \
+                __asm__ volatile("int $0x03"); \
+            } while (0)
+#    else
+#        define DP_DEBUG_BREAK()                                             \
+            do {                                                             \
+                static_assert(false, "DP_DEBUG_BREAK not implemented here"); \
+            } while (0)
+#    endif
 #endif
 
 #ifdef __cplusplus
@@ -248,6 +265,11 @@ DP_INLINE uint64_t DP_clamp_uint64(uint64_t x, uint64_t min, uint64_t max)
 }
 
 DP_INLINE double DP_clamp_double(double x, double min, double max)
+{
+    return x < min ? min : x > max ? max : x;
+}
+
+DP_INLINE float DP_clamp_float(float x, float min, float max)
 {
     return x < min ? min : x > max ? max : x;
 }

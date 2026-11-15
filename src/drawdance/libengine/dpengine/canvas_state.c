@@ -598,8 +598,9 @@ handle_put_image(DP_CanvasState *cs, DP_DrawContext *dc,
     int y = DP_uint32_to_int(uy);
     int width = DP_uint32_to_int(uw);
     int height = DP_uint32_to_int(uh);
+    DP_Rect image_bounds = DP_rect_make(x, y, width, height);
     DP_Rect canvas_bounds = DP_rect_make(0, 0, cs->width, cs->height);
-    if (!DP_rect_intersects(canvas_bounds, canvas_bounds)) {
+    if (!DP_rect_intersects(image_bounds, canvas_bounds)) {
         DP_error_set("Put image: out of bounds");
         return NULL;
     }
@@ -1242,6 +1243,10 @@ static DP_CanvasState *handle_transform_region(
         return NULL;
     }
 
+    // TODO: remove this condition with the next protocol version, it's not a
+    // good idea. You may legitimately scale an image significantly larger than
+    // the canvas when animating. Currently bound by compatibility though. See a
+    // check against this in transformmodel.cpp.
     if (DP_rect_width(dst_bounds) > (canvas_width * 2LL)
         || DP_rect_height(dst_bounds) > (canvas_height * 2LL)) {
         DP_error_set(

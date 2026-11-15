@@ -29,9 +29,11 @@ class ColorPickItem;
 class CursorItem;
 #endif
 class LaserTrailItem;
+class LiquifyItem;
 class MaskPreviewItem;
 class OutlineItem;
 class PathPreviewItem;
+class PivotItem;
 class SelectionItem;
 class TransformItem;
 class UserMarkerItem;
@@ -44,23 +46,26 @@ class CanvasScene final : public QGraphicsScene, public HudScene {
 	using AnchorLineItem = drawingboard::AnchorLineItem;
 	using AnnotationItem = drawingboard::AnnotationItem;
 	using BaseItem = drawingboard::BaseItem;
+	using BaseObject = drawingboard::BaseObject;
 	using CatchupItem = drawingboard::CatchupItem;
 	using ColorPickItem = drawingboard::ColorPickItem;
 #ifdef HAVE_EMULATED_BITMAP_CURSOR
 	using CursorItem = drawingboard::CursorItem;
 #endif
 	using LaserTrailItem = drawingboard::LaserTrailItem;
+	using LiquifyItem = drawingboard::LiquifyItem;
 	using MaskPreviewItem = drawingboard::MaskPreviewItem;
 	using NoticeItem = drawingboard::NoticeItem;
 	using OutlineItem = drawingboard::OutlineItem;
 	using PathPreviewItem = drawingboard::PathPreviewItem;
+	using PivotItem = drawingboard::PivotItem;
 	using SelectionItem = drawingboard::SelectionItem;
 	using ToggleItem = drawingboard::ToggleItem;
 	using TransformItem = drawingboard::TransformItem;
 	using UserMarkerItem = drawingboard::UserMarkerItem;
 
 public:
-	explicit CanvasScene(bool outline, QObject *parent = nullptr);
+	explicit CanvasScene(bool software, QObject *parent = nullptr);
 
 	void setCanvasModel(canvas::CanvasModel *canvasModel);
 	void setCanvasTransform(const QTransform &canvasTransform);
@@ -108,7 +113,8 @@ public:
 
 	void setSelectionIgnored(bool selectionIgnored);
 
-	void setTransformToolState(int mode, int handle, bool dragging);
+	void
+	setTransformToolState(int mode, int handle, bool dragging, bool pivotShown);
 
 	HudHandler *hud() { return m_hud; }
 	QRectF hudSceneRect() const override;
@@ -116,6 +122,8 @@ public:
 	bool hudCursorOnCanvas() const override;
 	void hudAddItem(BaseItem *item) override;
 	void hudRemoveItem(BaseItem *item) override;
+	void hudAddObject(BaseObject *object) override;
+	void hudRemoveObject(BaseObject *object) override;
 
 signals:
 	void annotationResized(int id);
@@ -143,6 +151,7 @@ private:
 
 	QGraphicsItemGroup *m_canvasGroup;
 
+	const bool m_software;
 	bool m_canvasVisible = true;
 	bool m_showAnnotations = true;
 	bool m_showAnnotationBorders = false;
@@ -169,6 +178,8 @@ private:
 	PathPreviewItem *m_pathPreview = nullptr;
 	SelectionItem *m_selection = nullptr;
 	TransformItem *m_transform = nullptr;
+	PivotItem *m_pivot = nullptr;
+	LiquifyItem *m_liquify = nullptr;
 	OutlineItem *m_outline = nullptr;
 	ColorPickItem *m_colorPick = nullptr;
 	QColor m_foregroundColor;

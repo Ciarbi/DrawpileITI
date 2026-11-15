@@ -11,7 +11,7 @@
     <message>
         <location line="+4"/>
         <source>It looks like Drawpile exited because it ran out of memory. If you were trying to join a session or open a file, its canvas may be too large or have too many layers for your device to handle.</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">Программа Drawpile вышла из-за недостатка памяти. Если вы пытались присоединиться к сессии или открыть файл, то холст возможно слишком большой или имеет слишком много слоев для вашего устройства.</translation>
     </message>
     <message>
         <location line="+6"/>
@@ -444,7 +444,7 @@
     <message>
         <location line="+8"/>
         <source>Pan Canvas</source>
-        <translation>Перемещение по холсту</translation>
+        <translation type="unfinished">Панорама холста</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -454,7 +454,7 @@
     <message>
         <location line="+2"/>
         <source>Zoom Canvas</source>
-        <translation>Масштаб холста</translation>
+        <translation>Масштабирование холста</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -526,12 +526,12 @@
     <message>
         <location line="+2"/>
         <source>Change Color Value</source>
-        <translation>Изменить значение цвета</translation>
+        <translation>Изменить яркость цвета</translation>
     </message>
     <message>
         <location line="+2"/>
         <source>Toggle Eraser Tool</source>
-        <translation type="unfinished"></translation>
+        <translation>Переключить ластик</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -541,7 +541,7 @@
     <message>
         <location line="+2"/>
         <source>Toggle Alpha Preserve</source>
-        <translation type="unfinished"></translation>
+        <translation>Переключить сохранение альфа</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -556,12 +556,12 @@
     <message>
         <location line="+2"/>
         <source>Hide Docks</source>
-        <translation type="unfinished"></translation>
+        <translation>Скрыть панели</translation>
     </message>
     <message>
         <location line="+9"/>
         <source>Trigger Action</source>
-        <translation type="unfinished"></translation>
+        <translation>Действие при срабатывании</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -1666,12 +1666,12 @@ Select a regular layer instead.</source>
     <message>
         <location filename="../utils/androidutils.cpp" line="-12"/>
         <source>Dynamic</source>
-        <translation type="unfinished"></translation>
+        <translation>Динамический</translation>
     </message>
     <message>
         <location line="+3"/>
         <source>Desktop</source>
-        <translation type="unfinished"></translation>
+        <translation>Рабочий стол</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -1692,190 +1692,6 @@ Select a regular layer instead.</source>
         <source>Frames %1</source>
         <extracomment>Title for imported animation tracks and layer groups.</extracomment>
         <translation>Кадр %1</translation>
-    </message>
-</context>
-<context>
-    <name>impex::RecordingConverter</name>
-    <message>
-        <location filename="../import/recordingconverter.cpp" line="+92"/>
-        <source>No input files given.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Error %1 opening project file %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+14"/>
-        <source>Error initializing compressor.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+72"/>
-        <source>Finishing project…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <source>Error finishing project.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+10"/>
-        <source>Error closing project.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+29"/>
-        <source>Processing project %1 session %2…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+68"/>
-        <source>Error %1 copying session %2 from project %3.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+28"/>
-        <source>Error %1 opening project %2: %3.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <source>Error %1 opening temporary file for %2: %3.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Error loading project %1.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+19"/>
-        <source>Converting recording %1…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Failed to open recording %1.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Incompatible recording.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <source>Error %1 opening project session.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Error setting compressor session.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+10"/>
-        <source>Error %1 opening project snapshot.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Error %1 finishing project snapshot.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+30"/>
-        <source>Error %1 converting recording %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+19"/>
-        <source>Error %1 reading recording %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <source>Error flushing compressor.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+24"/>
-        <source>Error %1 saving project snapshot.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Error %1 closing project session.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+25"/>
-        <source>Error %1 opening project %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Processing project %1 snapshot %2…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <source>Error opening playback for project %1.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Error %1 preparing playback for project %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+48"/>
-        <location line="+133"/>
-        <source>Error %1 processing project %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="-123"/>
-        <source>Error %1 replacing snapshot in project %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Session %1 not found in project %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Error %1 updating snapshot in project %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+25"/>
-        <source>Error %1 reading sessions in project %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+18"/>
-        <source>Processing final project snapshot…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Error opening playback for project %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Error %1 preparing playback for project %2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location line="+57"/>
-        <source>Error %1 saving snapshot in project %2.</source>
-        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2975,12 +2791,12 @@ Select a regular layer instead.</source>
     <message>
         <location line="+16"/>
         <source>Error opening source file &apos;%1&apos;: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>Ошибка открытия исходного файла &apos;%1&apos;: %2</translation>
     </message>
     <message>
         <location line="+13"/>
         <source>Error opening target file &apos;%1&apos;: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>Ошибка открытия целевого файла &apos;%1&apos;: %2</translation>
     </message>
     <message>
         <location line="+28"/>
@@ -2990,17 +2806,21 @@ Select a regular layer instead.</source>
     <message>
         <location line="+18"/>
         <source>Error reading from source file &apos;%1&apos;: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>Ошибка чтения из исходного файла &apos;%1&apos;: %2</translation>
     </message>
     <message>
         <location line="+8"/>
         <source>Error writing %1 byte(s) to target file &apos;%2&apos;: %3</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
+    <message numerus="yes">
         <location line="+9"/>
-        <source>Tried to write %1 byte(s) to target file &apos;%2&apos;, but only wrote %3</source>
-        <translation type="unfinished"></translation>
+        <source>Tried to write %n byte(s) to target file &apos;%1&apos;, but only wrote %2</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
     </message>
     <message>
         <location line="+13"/>
@@ -3034,7 +2854,7 @@ Select a regular layer instead.</source>
 <context>
     <name>widgets::CanvasView</name>
     <message>
-        <location filename="../view/canvascontrollerbase.cpp" line="+442"/>
+        <location filename="../view/canvascontrollerbase.cpp" line="+449"/>
         <source>Vertical flip: ON</source>
         <translation>Отражение по вертикали: ВКЛ</translation>
     </message>
@@ -3054,7 +2874,7 @@ Select a regular layer instead.</source>
         <translation>Горизонтальное зеркало: ВЫКЛ</translation>
     </message>
     <message>
-        <location line="+2306"/>
+        <location line="+2299"/>
         <source>Zoom: %1%</source>
         <translation>Масштаб: %1%</translation>
     </message>

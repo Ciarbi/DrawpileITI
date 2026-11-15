@@ -2083,7 +2083,15 @@ void TimelineWidget::wheelEvent(QWheelEvent *event)
 	d->updateWheelState(event);
 	Qt::KeyboardModifiers modifiers = event->modifiers();
 	QPoint pd = event->pixelDelta() * (event->inverted() ? -1 : 1);
-	if(modifiers.testFlag(Qt::ControlModifier)) {
+	if(modifiers.testFlag(Qt::AltModifier)) {
+		int delta = pd.y() == 0 ? -pd.x() : pd.y();
+		if(delta < 0) {
+			prevFrameWith(modifiers.testFlag(Qt::ControlModifier), false);
+		} else if(delta > 0) {
+			nextFrameWith(modifiers.testFlag(Qt::ControlModifier), false);
+		}
+
+	} else if(modifiers.testFlag(Qt::ControlModifier)) {
 		if(pd.y() != 0) {
 			zoomBy(pd.y() < 0 ? -1 : 1);
 		}
@@ -3463,6 +3471,14 @@ TimelineWidget::SetCurrentResult TimelineWidget::setCurrent(
 	bool needsUpdate = false;
 
 	int trackIndex = d->trackIndexById(trackId);
+	int actualFrame = qBound(0, frame, qMax(0, d->visibleFrameCount() - 1));
+	const canvas::TimelineKeyFrame *prevKeyFrame;
+	if(actualFrame == d->currentFrame) {
+		prevKeyFrame = nullptr;
+	} else {
+		prevKeyFrame = d->currentVisibleKeyFrame();
+	}
+
 	if(trackIndex != -1) {
 		d->currentTrackId = trackId;
 		emit trackSelected(trackId);
@@ -3471,10 +3487,7 @@ TimelineWidget::SetCurrentResult TimelineWidget::setCurrent(
 		trackIndex = d->trackIndexById(d->currentTrackId);
 	}
 
-	int actualFrame = qBound(0, frame, qMax(0, d->visibleFrameCount() - 1));
 	if(actualFrame != d->currentFrame) {
-		const canvas::TimelineKeyFrame *prevKeyFrame =
-			d->currentVisibleKeyFrame();
 		d->currentFrame = actualFrame;
 		emit frameSelected(frame);
 		needsUpdate = true;

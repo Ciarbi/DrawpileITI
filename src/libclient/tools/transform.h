@@ -13,6 +13,12 @@ namespace canvas {
 class TransformModel;
 }
 
+namespace io {
+namespace clip {
+struct TransformState;
+}
+}
+
 namespace net {
 class Client;
 }
@@ -40,6 +46,7 @@ public:
 		LeftEdge,
 		Outside,
 		Inside,
+		Pivot,
 	};
 
 	TransformTool(ToolController &owner);
@@ -49,6 +56,8 @@ public:
 	void modify(const ModifyParams &params) override;
 	void hover(const HoverParams &params) override;
 	void end(const EndParams &params) override;
+
+	bool copyCut(bool cut) override;
 
 	void finishMultipart() override;
 	void cancelMultipart() override;
@@ -62,7 +71,8 @@ public:
 		Tool::Type toolToReturnTo, bool onlyMask, bool quickMove,
 		const QCursor &outsideMoveCursor);
 	void beginTemporaryPaste(
-		Tool::Type toolToReturnTo, const QRect &srcBounds, const QImage &image);
+		Tool::Type toolToReturnTo, const QRect &srcBounds, const QImage &image,
+		const io::clip::TransformState *state = nullptr);
 	void clearTemporary();
 
 	bool handleDeselect(bool finish);
@@ -76,6 +86,9 @@ public:
 	bool center() const { return m_center; }
 	void setCenter(bool center) { m_center = center; }
 
+	void setPivotShown(bool pivotShown);
+	void resetPivot();
+
 	void setFeatureAccess(bool canTransform) { m_canTransform = canTransform; }
 	void setForceMove(bool forceMove) { m_forceMove = forceMove; }
 	void setApplyOnEnd(bool applyOnEnd) { m_applyOnEnd = applyOnEnd; }
@@ -85,7 +98,7 @@ public:
 	void rotateCw();
 	void rotateCcw();
 	void shrinkToView(const QRectF &viewBounds);
-	void stamp();
+	void stamp() override;
 
 private:
 	static constexpr int MAX_QUAD_STACK_DEPTH = 250;
@@ -97,13 +110,17 @@ private:
 	void setupTransform(canvas::TransformModel *transform, bool firstClick, Mode mode);
 	canvas::TransformModel *
 	tryBeginMove(bool firstClick, bool onlyMask, Mode mode);
-	void tryBeginPaste(const QRect &srcBounds, const QImage &image);
+	void tryBeginPaste(
+		const QRect &srcBounds, const QImage &image,
+		const io::clip::TransformState *state = nullptr);
 	void endTransform(canvas::TransformModel *transform, bool applied);
 
 	bool checkAndSend(net::Client *client, const net::MessageList &msgs);
 
 	void updateHoverHandle(
 		const canvas::TransformModel *transform, const QPointF &point);
+
+	void emitCurrentStateChange(const canvas::TransformModel *transform);
 
 	void
 	emitStateChange(const canvas::TransformModel *transform, Handle handle);
@@ -161,18 +178,28 @@ private:
 
 	void dragDistort(canvas::TransformModel *transform, bool constrain);
 
+	void dragPivot(canvas::TransformModel *transform, bool constrain);
+
 	QPointF getConstrainedEdgeDelta(
 		const QPointF &prevPoint, const QPointF &nextPoint,
 		const QPointF &delta) const;
 
 	static QPointF getPointAlongAxis(const QLineF &axis, const QPointF &target);
 
-	static QPolygonF rotateQuad(const TransformQuad &quad, qreal angle);
-
 	static QPolygonF rotateQuadAround(
 		const TransformQuad &quad, qreal angle, const QPointF &center);
 
-	void updateQuad(canvas::TransformModel *transform, const QPolygonF &target);
+	static QPointF
+	calculateRelativePivot(const TransformQuad &quad, const QPointF &pivotPos);
+
+	static QPointF
+	calculateEdgeDragPoint(QPointF p, QPointF pivotPos, qreal sx, qreal sy);
+
+	static qreal crossProduct(const QLineF &a, const QLineF &b);
+
+	void updateQuad(
+		canvas::TransformModel *transform, const QPolygonF &target,
+		const QPointF &pivot);
 
 	void pushQuad(canvas::TransformModel *transform);
 
@@ -193,7 +220,6 @@ private:
 	static QPointF getQuadHandlePoint(
 		const TransformQuad &quad, Handle handle, const QPointF &targetPoint);
 
-	void hotSwapToSelection(Tool::Type tool);
 	void returnToPreviousTool();
 
 	QCursor m_outsideMoveCursor = Qt::ArrowCursor;
@@ -208,6 +234,7 @@ private:
 	bool m_applyOnEnd = false;
 	bool m_constrain = false;
 	bool m_center = false;
+	bool m_pivotShown = true;
 	qreal m_angle = 0.0;
 	qreal m_zoom = 1.0;
 	Handle m_hoverHandle = Handle::Invalid;

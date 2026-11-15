@@ -113,12 +113,12 @@ using PresetShortcutMap = QHash<QKeySequence, PresetShortcut>;
 
 class BrushPresetTagModel::Private {
 public:
-	Private()
+	Private(BrushPresetTagModel *parent)
 		: m_presetChangeTimer(Qt::VeryCoarseTimer, 4000)
 	{
 		initDb();
 		connect(
-			&m_presetChangeTimer, &CompressedTimer::timeout,
+			&m_presetChangeTimer, &CompressedTimer::timeout, parent,
 			std::bind(&Private::writePresetChanges, this));
 	}
 
@@ -1231,7 +1231,7 @@ private:
 				&Private::migrateMarkerBlendMode,
 				&Private::migratePresetHistory,
 				&Private::migratePresetState,
-			};
+		};
 
 		int originalMigrationVersion = migrationVersionVariant.toInt();
 		int migrationVersion = originalMigrationVersion;
@@ -1334,6 +1334,7 @@ private:
 	{
 		QStringList migrations = {
 			QStringLiteral("0001-2_3_0.zpresets"),
+			QStringLiteral("0002-2_3_1.zpresets"),
 		};
 
 		for(const QString &name : migrations) {
@@ -1429,6 +1430,8 @@ private:
 					if(tagId == 0) {
 						qWarning(
 							"Failed to create tag %s", qUtf8Printable(tagName));
+					} else {
+						tagIdsToAssign.insert(tagId);
 					}
 				} else {
 					tagIdsToAssign.insert(tagId);
@@ -1547,7 +1550,7 @@ QString Preset::makeEffectivePreviewTitle(const QString &originalTitle)
 
 BrushPresetTagModel::BrushPresetTagModel(QObject *parent)
 	: QAbstractItemModel(parent)
-	, d(new Private)
+	, d(new Private(this))
 {
 	d->setPresetModel(new BrushPresetModel(this));
 	d->initShortcuts();
@@ -2306,7 +2309,9 @@ void BrushPresetTagModel::exportPreset(
 	}
 
 	QString thumbnailPath = QStringLiteral("%1_prev.png").arg(presetPath);
-	if(!zw.addFile(thumbnailPath, preset.originalThumbnail.bytes())) {
+	if(!zw.addFile(
+		   thumbnailPath,
+		   LazyThumbnail::toPng(preset.originalThumbnailPixmap()))) {
 		qWarning(
 			"Error exporting preset thumbnail '%s': %s",
 			qUtf8Printable(thumbnailPath), DP_error());

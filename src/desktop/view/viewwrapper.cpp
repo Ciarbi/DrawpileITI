@@ -11,7 +11,6 @@
 #include "desktop/toolwidgets/brushsettings.h"
 #include "desktop/toolwidgets/lasersettings.h"
 #include "desktop/toolwidgets/transformsettings.h"
-#include "desktop/toolwidgets/zoomsettings.h"
 #include "desktop/view/canvascontroller.h"
 #include "desktop/view/canvasscene.h"
 #include "desktop/view/canvasview.h"
@@ -108,6 +107,7 @@ void ViewWrapper::setCanvas(canvas::CanvasModel *canvas)
 {
 	m_controller->setCanvasModel(canvas);
 	m_scene->setCanvasModel(canvas);
+	m_canvasWidget->setCanvasModel(canvas);
 }
 
 drawingboard::AnnotationItem *ViewWrapper::getAnnotationItem(int annotationId)
@@ -368,8 +368,14 @@ void ViewWrapper::connectDocument(Document *doc)
 		toolCtrl, &tools::ToolController::panRequested, m_controller,
 		&CanvasController::scrollBy);
 	connect(
-		toolCtrl, &tools::ToolController::zoomRequested, m_controller,
-		&CanvasController::zoomTo);
+		toolCtrl, &tools::ToolController::zoomStepsRequested, m_controller,
+		&CanvasController::zoomStepsAt);
+	connect(
+		toolCtrl, &tools::ToolController::zoomToRectRequested, m_controller,
+		&CanvasController::zoomToRect);
+	connect(
+		toolCtrl, &tools::ToolController::scrubZoomRequested, m_controller,
+		&CanvasController::scrubZoomAt);
 	connect(
 		toolCtrl, &tools::ToolController::resetRotationToolRequested,
 		m_controller, &CanvasController::resetRotationTool);
@@ -570,14 +576,6 @@ void ViewWrapper::connectToolSettings(docks::ToolSettings *toolSettings)
 		laserPointerSettings,
 		&tools::LaserPointerSettings::pointerTrackingToggled, m_controller,
 		&CanvasController::setPointerTracking);
-
-	tools::ZoomSettings *zoomSettings = toolSettings->zoomSettings();
-	connect(
-		zoomSettings, &tools::ZoomSettings::resetZoom, m_controller,
-		&CanvasController::resetZoomCenter);
-	connect(
-		zoomSettings, &tools::ZoomSettings::fitToWindow, m_controller,
-		&CanvasController::zoomToFit);
 
 	toolSettings->transformSettings()->setCanvasView(this);
 }

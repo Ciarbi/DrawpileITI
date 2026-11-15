@@ -636,17 +636,13 @@ void CanvasView::zoomoutCursor()
 	}
 }
 
-void CanvasView::zoomTo(const QRect &rect, int steps)
+void CanvasView::zoomToRect(const QRect &rect)
 {
-	if(rect.width() < 15 || rect.height() < 15 || steps < 0) {
-		zoomStepsAt(steps, rect.center());
-	} else {
-		QWidget *vp = viewport();
-		QRectF viewRect = mapFromCanvas(rect).boundingRect();
-		qreal xScale = qreal(vp->width()) / viewRect.width();
-		qreal yScale = qreal(vp->height()) / viewRect.height();
-		setZoomAt(m_zoom * qMin(xScale, yScale), rect.center());
-	}
+	QWidget *vp = viewport();
+	QRectF viewRect = mapFromCanvas(rect).boundingRect();
+	qreal xScale = qreal(vp->width()) / viewRect.width();
+	qreal yScale = qreal(vp->height()) / viewRect.height();
+	setZoomAt(m_zoom * qMin(xScale, yScale), rect.center());
 }
 
 void CanvasView::zoomToFit()
@@ -736,6 +732,18 @@ void CanvasView::setZoomAt(qreal zoom, const QPointF &point)
 
 		emitViewTransformed();
 		showTransformNotice(getZoomNotice());
+	}
+}
+
+void CanvasView::scrubZoomAt(qreal deltaY, QPointF point)
+{
+	if(deltaY != 0) {
+		qreal delta = qBound(-1.0, deltaY / 100.0, 1.0);
+		if(delta > 0.0) {
+			setZoomAt(m_zoom * (1.0 + delta), point);
+		} else if(delta < 0.0) {
+			setZoomAt(m_zoom / (1.0 - delta), point);
+		}
 	}
 }
 
@@ -2674,14 +2682,7 @@ void CanvasView::moveDrag(const QPoint &point)
 			m_dragSnapRotation, m_dragDiscreteRotation);
 		break;
 	case CanvasShortcuts::CANVAS_ZOOM:
-		if(deltaY != 0) {
-			qreal delta = qBound(-1.0, deltaY / 100.0, 1.0);
-			if(delta > 0.0) {
-				setZoomAt(m_zoom * (1.0 + delta), m_dragCanvasPoint);
-			} else if(delta < 0.0) {
-				setZoomAt(m_zoom / (1.0 - delta), m_dragCanvasPoint);
-			}
-		}
+		scrubZoomAt(deltaY, m_dragCanvasPoint);
 		break;
 	case CanvasShortcuts::TOOL_ADJUST1:
 		dragAdjust(int(tools::QuickAdjustType::Tool1), deltaX, 1.2);

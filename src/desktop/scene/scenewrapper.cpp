@@ -13,7 +13,6 @@
 #include "desktop/toolwidgets/brushsettings.h"
 #include "desktop/toolwidgets/lasersettings.h"
 #include "desktop/toolwidgets/transformsettings.h"
-#include "desktop/toolwidgets/zoomsettings.h"
 #include "desktop/widgets/canvasframe.h"
 #include "desktop/widgets/viewstatus.h"
 #include "desktop/widgets/viewstatusbar.h"
@@ -378,8 +377,14 @@ void SceneWrapper::connectDocument(Document *doc)
 		toolCtrl, &tools::ToolController::panRequested, m_view,
 		&CanvasView::scrollBy);
 	connect(
-		toolCtrl, &tools::ToolController::zoomRequested, m_view,
-		&CanvasView::zoomTo);
+		toolCtrl, &tools::ToolController::zoomStepsRequested, m_view,
+		&CanvasView::zoomStepsAt);
+	connect(
+		toolCtrl, &tools::ToolController::zoomToRectRequested, m_view,
+		&CanvasView::zoomToRect);
+	connect(
+		toolCtrl, &tools::ToolController::scrubZoomRequested, m_view,
+		&CanvasView::scrubZoomAt);
 	connect(
 		toolCtrl, &tools::ToolController::resetRotationToolRequested, m_view,
 		&CanvasView::resetRotationTool);
@@ -580,14 +585,6 @@ void SceneWrapper::connectToolSettings(docks::ToolSettings *toolSettings)
 		laserPointerSettings,
 		&tools::LaserPointerSettings::pointerTrackingToggled, m_view,
 		&CanvasView::setPointerTracking);
-
-	tools::ZoomSettings *zoomSettings = toolSettings->zoomSettings();
-	connect(
-		zoomSettings, &tools::ZoomSettings::resetZoom, m_view,
-		&CanvasView::resetZoomCenter);
-	connect(
-		zoomSettings, &tools::ZoomSettings::fitToWindow, m_view,
-		&CanvasView::zoomToFit);
 
 	toolSettings->transformSettings()->setCanvasView(this);
 }

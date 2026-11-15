@@ -1,35 +1,129 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 #include "desktop/toolwidgets/zoomsettings.h"
-
-#include <QWidget>
-#include <QVBoxLayout>
+#include "desktop/widgets/groupedtoolbutton.h"
+#include "libclient/tools/toolcontroller.h"
+#include "libclient/tools/zoom.h"
+#include <QButtonGroup>
+#include <QFormLayout>
+#include <QHBoxLayout>
 #include <QPushButton>
+#include <QWidget>
 
 namespace tools {
+
+namespace props {
+static const ToolProperties::RangedValue<int> zoomMode{
+	QStringLiteral("zoommode"), 1, 0, 1};
+}
 
 ZoomSettings::ZoomSettings(ToolController *ctrl, QObject *parent)
 	: ToolSettings(ctrl, parent)
 {
 }
 
+void ZoomSettings::setActions(
+	QAction *zoomIn, QAction *resetZoom, QAction *zoomToFit, QAction *zoomOut)
+{
+	m_zoomInButton->setDefaultAction(zoomIn);
+	m_resetZoomButton->setDefaultAction(resetZoom);
+	m_zoomToFitButton->setDefaultAction(zoomToFit);
+	m_zoomOutButton->setDefaultAction(zoomOut);
+}
+
+ToolProperties ZoomSettings::saveToolSettings()
+{
+	ToolProperties cfg(toolType());
+	cfg.setValue(props::zoomMode, m_zoomModeGroup->checkedId());
+	return cfg;
+}
+
+void ZoomSettings::restoreToolSettings(const ToolProperties &cfg)
+{
+	QAbstractButton *button =
+		m_zoomModeGroup->button(cfg.value(props::zoomMode));
+	if(button) {
+		button->setChecked(true);
+	}
+}
+
+void ZoomSettings::pushSettings()
+{
+	ToolController *ctrl = controller();
+	ZoomTool *tool = static_cast<ZoomTool *>(ctrl->getTool(Tool::ZOOM));
+	tool->setScrub(m_zoomModeGroup->checkedId() != 0);
+}
+
 QWidget *ZoomSettings::createUiWidget(QWidget *parent)
 {
+	m_headerWidget = new QWidget(parent);
+	QHBoxLayout *headerLayout = new QHBoxLayout(m_headerWidget);
+	headerLayout->setContentsMargins(0, 0, 0, 0);
+	headerLayout->setSpacing(0);
+	headerLayout->addStretch(1);
+
+	m_zoomInButton =
+		new widgets::GroupedToolButton(widgets::GroupedToolButton::GroupLeft);
+	m_zoomInButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+	headerLayout->addWidget(m_zoomInButton, 3);
+
+	m_resetZoomButton =
+		new widgets::GroupedToolButton(widgets::GroupedToolButton::GroupCenter);
+	m_resetZoomButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+	headerLayout->addWidget(m_resetZoomButton, 3);
+
+	m_zoomToFitButton =
+		new widgets::GroupedToolButton(widgets::GroupedToolButton::GroupCenter);
+	m_zoomToFitButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+	headerLayout->addWidget(m_zoomToFitButton, 3);
+
+	m_zoomOutButton =
+		new widgets::GroupedToolButton(widgets::GroupedToolButton::GroupRight);
+	m_zoomOutButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+	headerLayout->addWidget(m_zoomOutButton, 3);
+
+	headerLayout->addStretch(1);
+
 	QWidget *widget = new QWidget(parent);
-	auto layout = new QVBoxLayout(widget);
+	QFormLayout *form = new QFormLayout(widget);
+	form->setContentsMargins(3, 3, 3, 3);
+	form->setSpacing(3);
 
-	auto *resetButton = new QPushButton(tr("Normal Size"), widget);
-	auto *fitButton = new QPushButton(tr("Fit To Window"), widget);
+	QHBoxLayout *modeLayout = new QHBoxLayout;
+	modeLayout->setContentsMargins(0, 0, 0, 0);
+	modeLayout->setSpacing(0);
 
-	connect(resetButton, &QPushButton::clicked, this, &ZoomSettings::resetZoom);
-	connect(fitButton, &QPushButton::clicked, this, &ZoomSettings::fitToWindow);
+	m_modeScrubButton =
+		new widgets::GroupedToolButton(widgets::GroupedToolButton::GroupLeft);
+	m_modeScrubButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+	//: Zoom tool mode, refers to clicking and dragging to scrub zoom.
+	m_modeScrubButton->setText(tr("Drag"));
+	m_modeScrubButton->setToolTip(tr("Zoom by clicking and dragging."));
+	m_modeScrubButton->setStatusTip(m_modeScrubButton->toolTip());
+	m_modeScrubButton->setCheckable(true);
+	modeLayout->addWidget(m_modeScrubButton);
 
-	layout->addWidget(resetButton);
-	layout->addWidget(fitButton);
-	layout->addStretch(1);
+	m_modeSelectButton =
+		new widgets::GroupedToolButton(widgets::GroupedToolButton::GroupRight);
+	m_modeSelectButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+	//: Zoom tool mode, refers to drawing a rectangle to zoom into.
+	m_modeSelectButton->setText(tr("Select"));
+	m_modeSelectButton->setToolTip(tr("Zoom by selecting an area."));
+	m_modeSelectButton->setStatusTip(m_modeSelectButton->toolTip());
+	m_modeSelectButton->setCheckable(true);
+	m_modeSelectButton->setChecked(true);
+	modeLayout->addWidget(m_modeSelectButton);
+
+	form->addRow(tr("Mode:"), modeLayout);
+
+	m_zoomModeGroup = new QButtonGroup(this);
+	m_zoomModeGroup->addButton(m_modeScrubButton, 1);
+	m_zoomModeGroup->addButton(m_modeSelectButton, 0);
+	connect(
+		m_zoomModeGroup,
+		QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked), this,
+		&ZoomSettings::pushSettings);
 
 	return widget;
 }
 
 }
-

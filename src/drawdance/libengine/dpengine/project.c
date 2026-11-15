@@ -4866,11 +4866,13 @@ typedef struct DP_ProjectCanvasFromSnapshotLayer {
         DP_TransientLayerGroup *tlg;
     };
     int used;
+    int next_tile_index;
 } DP_ProjectCanvasFromSnapshotLayer;
 
 typedef struct DP_ProjectCanvasFromSnapshotSublayer {
     DP_TransientLayerProps *tlp;
     DP_TransientLayerContent *tlc;
+    int next_tile_index;
 } DP_ProjectCanvasFromSnapshotSublayer;
 
 typedef struct DP_ProjectCanvasFromSnapshotContext
@@ -5103,13 +5105,26 @@ static void cfs_insert_tile_job(void *user, void *element)
     memcpy(job->data, params->data, params->header.size);
 }
 
+static bool cfs_claim_tiles(int *in_out_next_tile_index, int tile_index,
+                            int repeat)
+{
+    if (tile_index < *in_out_next_tile_index) {
+        return false;
+    }
+    else {
+        *in_out_next_tile_index = tile_index + repeat + 1;
+        return true;
+    }
+}
+
 static bool snapshot_metadata_dimensions_valid(int width, int height)
 {
     return (width == 0 && height == 0)
         || DP_canvas_state_dimensions_in_bounds(width, height);
 }
 
-static bool cfs_read_metadata(DP_ProjectCanvasFromSnapshotContext *c)
+static bool cfs_read_metadata(DP_ProjectCanvasFromSnapshotContext *c,
+                              size_t max_pixel_size)
 {
     DP_Project *prj = c->prj;
     sqlite3_stmt *stmt =
@@ -5130,6 +5145,7 @@ static bool cfs_read_metadata(DP_ProjectCanvasFromSnapshotContext *c)
         DP_transient_canvas_state_transient_metadata(tcs);
 
     bool error;
+    bool want_background_tile = true;
     int width = 0;
     int height = 0;
     int offset_x = 0;
@@ -5143,24 +5159,30 @@ static bool cfs_read_metadata(DP_ProjectCanvasFromSnapshotContext *c)
         case DP_PROJECT_SNAPSHOT_METADATA_HEIGHT:
             height = sqlite3_column_int(stmt, 1);
             break;
-        case DP_PROJECT_SNAPSHOT_METADATA_BACKGROUND_TILE: {
-            const unsigned char *data = sqlite3_column_blob(stmt, 1);
-            size_t size = DP_int_to_size(sqlite3_column_bytes(stmt, 1));
-            if (data && size >= 4) {
-                DP_ProjectCanvasFromSnapshotTileJobParams params = {
-                    {
-                        c,
-                        {{{0u}, -1}},
-                        -1,
-                        TILE_JOB_REPEAT_SENTINEL_BACKGROUND,
-                        size,
-                    },
-                    data,
-                };
-                DP_worker_push_with(c->worker, cfs_insert_tile_job, &params);
+        case DP_PROJECT_SNAPSHOT_METADATA_BACKGROUND_TILE:
+            if (want_background_tile) {
+                want_background_tile = false;
+                const unsigned char *data = sqlite3_column_blob(stmt, 1);
+                size_t size = DP_int_to_size(sqlite3_column_bytes(stmt, 1));
+                if (data && size >= 4 && size <= max_pixel_size) {
+                    DP_ProjectCanvasFromSnapshotTileJobParams params = {
+                        {
+                            c,
+                            {{{0u}, -1}},
+                            -1,
+                            TILE_JOB_REPEAT_SENTINEL_BACKGROUND,
+                            size,
+                        },
+                        data,
+                    };
+                    DP_worker_push_with(c->worker, cfs_insert_tile_job,
+                                        &params);
+                }
+            }
+            else {
+                DP_warn("Duplicate background tile");
             }
             break;
-        }
         case DP_PROJECT_SNAPSHOT_METADATA_DPIX:
             DP_transient_document_metadata_dpix_set(
                 tdm, sqlite3_column_int(stmt, 1));
@@ -5534,7 +5556,8 @@ static bool cfs_read_tiles(DP_ProjectCanvasFromSnapshotContext *c,
     DP_Project *prj = c->prj;
     sqlite3_stmt *stmt = ps_prepare_ephemeral(
         prj, "select layer_index, tile_index, context_id, repeat, pixels "
-             "from snapshot_tiles where snapshot_id = ?");
+             "from snapshot_tiles where snapshot_id = ? "
+             "order by layer_index, tile_index");
     if (!stmt) {
         return false;
     }
@@ -5613,6 +5636,12 @@ static bool cfs_read_tiles(DP_ProjectCanvasFromSnapshotContext *c,
             continue;
         }
 
+        if (!cfs_claim_tiles(&layer->next_tile_index, tile_index, repeat)) {
+            DP_warn("Tile index %d of layer %d overlaps previous tiles",
+                    tile_index, layer_index);
+            continue;
+        }
+
         DP_TransientLayerContent *tlc = layer->tlc;
         if (size == 4
             && memcmp(pixels, (unsigned char[]){0, 0, 0, 0}, 4) == 0) {
@@ -5684,7 +5713,7 @@ static bool cfs_read_sublayers(DP_ProjectCanvasFromSnapshotContext *c,
 
     c->sublayers = DP_malloc(sizeof(*c->sublayers) * DP_int_to_size(count));
     for (int i = 0; i < count; ++i) {
-        c->sublayers[i] = (DP_ProjectCanvasFromSnapshotSublayer){NULL, NULL};
+        c->sublayers[i] = (DP_ProjectCanvasFromSnapshotSublayer){NULL, NULL, 0};
     }
 
     DP_Project *prj = c->prj;
@@ -5740,6 +5769,15 @@ static bool cfs_read_sublayers(DP_ProjectCanvasFromSnapshotContext *c,
             continue;
         }
 
+        if (DP_layer_props_list_index_by_id(
+                DP_transient_layer_content_sub_props_noinc(layer->tlc),
+                sublayer_id)
+            >= 0) {
+            DP_warn("Sublayer %d duplicates id %d of layer %d", sublayer_index,
+                    sublayer_id, layer_index);
+            continue;
+        }
+
         int blend_mode = sqlite3_column_int(stmt, 3);
         if (!DP_blend_mode_valid_for_layer(blend_mode)) {
             DP_warn("Sublayer %d has invalid blend mode %d", sublayer_index,
@@ -5785,7 +5823,8 @@ static bool cfs_read_subtiles(DP_ProjectCanvasFromSnapshotContext *c,
     DP_Project *prj = c->prj;
     sqlite3_stmt *stmt = ps_prepare_ephemeral(
         prj, "select sublayer_index, tile_index, repeat, pixels "
-             "from snapshot_sublayer_tiles where snapshot_id = ?");
+             "from snapshot_sublayer_tiles where snapshot_id = ? "
+             "order by sublayer_index, tile_index");
     if (!stmt) {
         return false;
     }
@@ -5850,6 +5889,12 @@ static bool cfs_read_subtiles(DP_ProjectCanvasFromSnapshotContext *c,
         }
         else if (size > max_pixel_size) {
             DP_warn("Tile index %d of sublayer %d has too much pixel data",
+                    tile_index, sublayer_index);
+            continue;
+        }
+
+        if (!cfs_claim_tiles(&sublayer->next_tile_index, tile_index, repeat)) {
+            DP_warn("Tile index %d of sublayer %d overlaps previous tiles",
                     tile_index, sublayer_index);
             continue;
         }
@@ -5925,7 +5970,7 @@ static bool cfs_read_selections(DP_ProjectCanvasFromSnapshotContext *c,
     sqlite3_stmt *stmt = ps_prepare_ephemeral(
         prj, "select selection_id, context_id, tile_index, mask "
              "from snapshot_selection_tiles where snapshot_id = ? "
-             "order by selection_id, context_id");
+             "order by selection_id, context_id, tile_index");
     if (!stmt) {
         return false;
     }
@@ -5942,6 +5987,7 @@ static bool cfs_read_selections(DP_ProjectCanvasFromSnapshotContext *c,
     int used = 0;
     int current_selection_id = -1;
     int current_context_id = -1;
+    int next_tile_index = 0;
     DP_TransientSelectionSet *tss =
         DP_transient_canvas_state_transient_selection_set_noinc_nullable(c->tcs,
                                                                          count);
@@ -6012,6 +6058,7 @@ static bool cfs_read_selections(DP_ProjectCanvasFromSnapshotContext *c,
                                                                      tsel);
                 current_selection_id = selection_id;
                 current_context_id = context_id;
+                next_tile_index = 0;
                 tlc = DP_transient_selection_transient_content_noinc(tsel);
             }
             else {
@@ -6019,6 +6066,13 @@ static bool cfs_read_selections(DP_ProjectCanvasFromSnapshotContext *c,
                         selection_id, context_id, index);
                 continue;
             }
+        }
+
+        if (!cfs_claim_tiles(&next_tile_index, tile_index, 0)) {
+            DP_warn("Tile index %d of selection %d of user %d overlaps "
+                    "previous tiles",
+                    tile_index, selection_id, context_id);
+            continue;
         }
 
         if (data) {
@@ -6534,7 +6588,7 @@ DP_CanvasState *DP_project_canvas_from_snapshot(DP_Project *prj,
     DP_PERF_END(setup);
 
     DP_PERF_BEGIN(metadata, "load:metadata");
-    bool metadata_ok = cfs_read_metadata(&c);
+    bool metadata_ok = cfs_read_metadata(&c, max_pixel_size);
     DP_PERF_END(metadata);
     if (!metadata_ok) {
         cfs_context_dispose(&c, false);
@@ -6548,7 +6602,8 @@ DP_CanvasState *DP_project_canvas_from_snapshot(DP_Project *prj,
         DP_PERF_BEGIN(layers, "load:layers");
         c.layers = DP_malloc(sizeof(*c.layers) * DP_int_to_size(c.layer_count));
         for (int i = 0; i < c.layer_count; ++i) {
-            c.layers[i] = (DP_ProjectCanvasFromSnapshotLayer){NULL, {NULL}, -1};
+            c.layers[i] =
+                (DP_ProjectCanvasFromSnapshotLayer){NULL, {NULL}, -1, 0};
         }
         DP_transient_canvas_state_transient_layers(c.tcs, c.root_layer_count);
         DP_transient_canvas_state_transient_layer_props(c.tcs,
@@ -7408,6 +7463,7 @@ static DP_CanvasState *canvas_from_snapshot_playback(
         DP_CanvasState *cs = c->load_snapshot_fn(
             c->prj, DP_playback_draw_context(c->pb), snapshot_id);
         if (cs) {
+            DP_playback_local_state_reset_to(c->pb, cs);
             DP_playback_canvas_history_reset_to_state_noinc(c->pb, cs);
         }
         else {

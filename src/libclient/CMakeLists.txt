@@ -93,6 +93,10 @@ target_sources(dpclient PRIVATE
 	drawdance/layerprops.h
 	drawdance/layerpropslist.cpp
 	drawdance/layerpropslist.h
+	drawdance/liquify.cpp
+	drawdance/liquify.h
+	drawdance/liquifyworker.cpp
+	drawdance/liquifyworker.h
 	drawdance/paintengine.cpp
 	drawdance/paintengine.h
 	drawdance/perf.cpp
@@ -143,6 +147,8 @@ target_sources(dpclient PRIVATE
 	import/loadresult.h
 	import/recordingconverter.cpp
 	import/recordingconverter.h
+	io/clipboard.cpp
+	io/clipboard.h
 	io/files.cpp
 	io/files.h
 	io/pathinfo.cpp
@@ -199,6 +205,8 @@ target_sources(dpclient PRIVATE
 	tools/laser.h
 	tools/lassofill.cpp
 	tools/lassofill.h
+	tools/liquify.cpp
+	tools/liquify.h
 	tools/magicwand.cpp
 	tools/magicwand.h
 	tools/pan.cpp
@@ -396,6 +404,10 @@ target_link_libraries(dpclient
 		${QT_PACKAGE_NAME}::Network
 		${QT_PACKAGE_NAME}::Gui
 )
+
+if(QT_VERSION_MAJOR GREATER_EQUAL 6)
+	target_compile_definitions(dpclient PRIVATE QT_NO_CONTEXTLESS_CONNECT=1)
+endif()
 
 if(TARGET ${QT_PACKAGE_NAME}::WebSockets)
 	target_sources(dpclient PRIVATE

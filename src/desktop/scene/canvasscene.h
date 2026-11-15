@@ -22,9 +22,11 @@ class AnnotationItem;
 class CanvasItem;
 class ColorPickItem;
 class LaserTrailItem;
+class LiquifyItem;
 class MaskPreviewItem;
 class OutlineItem;
 class PathPreviewItem;
+class PivotItem;
 class SelectionItem;
 class TransformItem;
 class UserMarkerItem;
@@ -72,7 +74,8 @@ public:
 	void setSelectionIgnored(bool selectionIgnored);
 	void setShowSelectionMask(bool showSelectionMask);
 
-	void setTransformToolState(int mode, int handle, bool dragging);
+	void
+	setTransformToolState(int mode, int handle, bool dragging, bool pivotShown);
 
 	void setShowOwnUserMarker(bool showOwnUserMarker);
 	void setUserMarkerPersistence(int userMarkerPersistence);
@@ -106,6 +109,8 @@ public:
 	bool hudCursorOnCanvas() const override;
 	void hudAddItem(BaseItem *item) override;
 	void hudRemoveItem(BaseItem *item) override;
+	void hudAddObject(BaseObject *object) override;
+	void hudRemoveObject(BaseObject *object) override;
 
 public slots:
 	//! Show annotation borders
@@ -187,6 +192,8 @@ private:
 	PathPreviewItem *m_pathPreview;
 	SelectionItem *m_selection;
 	TransformItem *m_transform;
+	PivotItem *m_pivot;
+	LiquifyItem *m_liquify;
 
 	OutlineItem *m_outlineItem;
 	ColorPickItem *m_colorPick = nullptr;
