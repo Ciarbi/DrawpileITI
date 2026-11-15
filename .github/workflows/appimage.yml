@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           submodules: recursive
 
@@ -64,20 +64,20 @@ jobs:
             -DENABLE_ARCH_NATIVE=OFF
 
       - name: Build
-        run: cmake --build build --parallel 2
+        run: cmake --build build/linux-release-qt6-all-make --parallel 2
 
       - name: Install in AppDir
         run: |
           mkdir -p AppDir
           DESTDIR="$GITHUB_WORKSPACE/AppDir" \
-            cmake --install build --config Release
+            cmake --install build/linux-release-qt6-all-make --config Release
           # The cmake --install step triggers linuxdeploy via a custom target
           # and creates Drawpile-x86_64.AppImage in the workspace root.
           # Rename it to the expected artifact name.
           mv Drawpile-x86_64.AppImage DrawpileITI-x86_64.AppImage
 
       - name: Post artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
         with:
           name: DrawpileITI-AppImage-x86_64
           path: "*.AppImage"
