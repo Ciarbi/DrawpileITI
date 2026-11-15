@@ -1565,6 +1565,12 @@ void CanvasView::mousePressEvent(QMouseEvent *event)
 
 	updateCursorPos(mousePos);
 
+	m_outlineFollowsTouch = false;
+	canvas::Point mousePoint = mapToCanvas(
+		QDateTime::currentMSecsSinceEpoch(), mousePos, 1.0, 0.0, 0.0, 0.0);
+	updateOutlinePos(mousePoint);
+	updateOutline();
+
 	Qt::MouseButton button = event->button();
 	if((!m_enableTablet || !isSynthetic(event)) && !isSyntheticTouch(event) &&
 	   !touching &&
@@ -1589,7 +1595,7 @@ void CanvasView::mousePressEvent(QMouseEvent *event)
 void CanvasView::penMoveEvent(
 	long long timeMsec, const QPointF &pos, qreal pressure, qreal xtilt,
 	qreal ytilt, qreal rotation, Qt::MouseButtons buttons,
-	Qt::KeyboardModifiers modifiers)
+	Qt::KeyboardModifiers modifiers, bool touch)
 {
 	if(m_hudActionToActivate.isValid()) {
 		return;
@@ -1640,6 +1646,12 @@ void CanvasView::penMoveEvent(
 				point.ytilt(), point.rotation(), match.toolConstraint1(),
 				match.toolConstraint2(), pos);
 		}
+	}
+	// Only update the brush outline when the input method that generated this
+	// move event is the one the outline is currently following. This makes the
+	// outline stick to the last used input method (mouse or touch) instead of
+	// being constantly stolen by idle mouse move events.
+	if(touch == m_outlineFollowsTouch) {
 		updateOutlinePos(point);
 		updateOutline();
 	}
@@ -1673,7 +1685,7 @@ void CanvasView::mouseMoveEvent(QMouseEvent *event)
 
 	penMoveEvent(
 		QDateTime::currentMSecsSinceEpoch(), mousePos, 1.0, 0.0, 0.0, 0.0,
-		event->buttons(), getMouseModifiers(event));
+		event->buttons(), getMouseModifiers(event), false);
 }
 
 void CanvasView::penReleaseEvent(
@@ -1796,6 +1808,13 @@ void CanvasView::touchPressEvent(
 	const QPoint &globalPos, qreal pressure)
 {
 	updateCursorPos(pos.toPoint());
+
+	m_outlineFollowsTouch = true;
+	canvas::Point touchPoint = mapToCanvas(
+		timeMsec, pos, pressure, 0.0, 0.0, 0.0);
+	updateOutlinePos(touchPoint);
+	updateOutline();
+
 	penPressEvent(
 		event, timeMsec, pos, globalPos, pressure, 0.0, 0.0, 0.0,
 		Qt::LeftButton, Qt::NoModifier, int(tools::DeviceType::Touch), false);
@@ -1805,7 +1824,8 @@ void CanvasView::touchMoveEvent(
 	long long timeMsec, const QPointF &pos, qreal pressure)
 {
 	penMoveEvent(
-		timeMsec, pos, pressure, 0.0, 0.0, 0.0, Qt::LeftButton, Qt::NoModifier);
+		timeMsec, pos, pressure, 0.0, 0.0, 0.0, Qt::LeftButton, Qt::NoModifier,
+		true);
 }
 
 void CanvasView::touchReleaseEvent(long long timeMsec, const QPointF &pos)
@@ -2403,6 +2423,14 @@ bool CanvasView::viewportEvent(QEvent *event)
 			tabev->accept();
 		}
 
+		m_outlineFollowsTouch = false;
+		canvas::Point tabletPoint = mapToCanvas(
+			QDateTime::currentMSecsSinceEpoch(), compat::tabPosF(*tabev),
+			tabev->pressure(), tabev->xTilt(), tabev->yTilt(),
+			qDegreesToRadians(tabev->rotation()));
+		updateOutlinePos(tabletPoint);
+		updateOutline();
+
 		penPressEvent(
 			event, QDateTime::currentMSecsSinceEpoch(), compat::tabPosF(*tabev),
 			compat::tabGlobalPos(*tabev), tabev->pressure(), tabev->xTilt(),
@@ -2445,7 +2473,7 @@ bool CanvasView::viewportEvent(QEvent *event)
 				QDateTime::currentMSecsSinceEpoch(), compat::tabPosF(*tabev),
 				tabev->pressure(), tabev->xTilt(), tabev->yTilt(),
 				qDegreesToRadians(tabev->rotation()), tabev->buttons(),
-				modifiers);
+				modifiers, false);
 		}
 	} else if(type == QEvent::TabletRelease && m_enableTablet) {
 		startTabletEventTimer();

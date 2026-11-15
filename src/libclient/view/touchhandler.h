@@ -119,6 +119,7 @@ private:
 	enum class TouchMode { Unknown, Drawing, Moving };
 
 	struct TouchSpot {
+		int id = -1;
 		enum { Initial, Active, Gone } state = Initial;
 		QPointF current;
 		QPointF previous;

@@ -15,8 +15,6 @@ CMakeLists.txt.user*
 *.swp
 
 # Hidden files
-#.*/*
-#.github/*
 .DS_Store
 
 # Python venv directories
@@ -38,3 +36,4 @@ node_modules/
 src/desktop/assets/i18n
 
 job-logs.txt
+logs_118299357898/

@@ -11,6 +11,7 @@ extern "C" {
 #include <QLoggingCategory>
 #include <QTimer>
 #include <QtMath>
+#include <algorithm>
 #include <cmath>
 
 Q_LOGGING_CATEGORY(
@@ -703,11 +704,21 @@ void TouchHandler::TouchState::update(QTouchEvent *event)
 		m_spots.reserve(pointsCount);
 		for(const compat::TouchPoint &tp : points) {
 			TouchSpot &spot = m_spotsById[tp.id()];
+			spot.id = compat::touchId(tp);
 			if(m_spotsChanged) {
 				spot.anchor = spot.current;
 			}
 			m_spots.append(spot);
 		}
+
+		// Keep the spot list in a stable order (by touch id) so that
+		// two-finger rotation always pairs the same physical fingers across
+		// updates. Qt does not guarantee a stable touch point order, and a
+		// swap would make the rotation line compare different fingers and
+		// spin the canvas.
+		std::sort(
+			m_spots.begin(), m_spots.end(),
+			[](const TouchSpot &a, const TouchSpot &b) { return a.id < b.id; });
 
 		if(m_spotsChanged) {
 			m_anchorCenterValid = false;

@@ -328,7 +328,7 @@ private:
 	void penMoveEvent(
 		long long timeMsec, const QPointF &pos, qreal pressure, qreal xtilt,
 		qreal ytilt, qreal rotation, Qt::MouseButtons buttons,
-		Qt::KeyboardModifiers modifiers);
+		Qt::KeyboardModifiers modifiers, bool touch = false);
 	void penReleaseEvent(
 		long long timeMsec, const QPointF &pos, Qt::MouseButton button,
 		Qt::KeyboardModifiers modifiers);
@@ -501,6 +501,7 @@ private:
 	//! Previous pointer location
 	canvas::Point m_prevpoint;
 	QPointF m_prevoutlinepoint;
+	bool m_outlineFollowsTouch = false;
 	qreal m_pointerdistance;
 	qreal m_pointervelocity;
 
