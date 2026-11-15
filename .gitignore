@@ -2,7 +2,6 @@
 Makefile
 Makefile.*
 CMakeLists.txt.user*
-CMakeUserPresets.json
 
 # Build directories
 /*build*/
@@ -11,12 +10,13 @@ CMakeUserPresets.json
 /pkg/android/*build*/
 /pkg/emscripten/*build*/
 /pkg/macos/*build*/
+/AppDir
 
 *.swp
 
 # Hidden files
-.*/*
-!.github/*
+#.*/*
+#.github/*
 .DS_Store
 
 # Python venv directories
@@ -36,3 +36,5 @@ compile_commands.json
 # NPM modules
 node_modules/
 src/desktop/assets/i18n
+
+job-logs.txt
