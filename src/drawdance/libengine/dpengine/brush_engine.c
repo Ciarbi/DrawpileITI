@@ -59,6 +59,7 @@ typedef enum DP_BrushEngineActiveType {
     DP_BRUSH_ENGINE_ACTIVE_PIXEL,
     DP_BRUSH_ENGINE_ACTIVE_SOFT,
     DP_BRUSH_ENGINE_ACTIVE_MYPAINT,
+    DP_BRUSH_ENGINE_ACTIVE_FILTER,
 } DP_BrushEngineActiveType;
 
 typedef enum DP_BrushEngineFloodTarget {
@@ -137,6 +138,16 @@ typedef struct DP_MyPaintDabParams {
     uint32_t size;
     uint32_t color;
 } DP_MyPaintDabParams;
+
+typedef struct DP_FilterDabParams {
+    uint8_t flags;
+    uint8_t filter_type;
+    uint8_t strength;
+    int32_t x;
+    int32_t y;
+    uint32_t size;
+    uint32_t color;
+} DP_FilterDabParams;
 
 struct DP_MaskSync {
     DP_Atomic refcount;
@@ -271,6 +282,15 @@ struct DP_BrushEngine {
             int32_t dab_y;
             uint32_t dab_color;
         } mypaint;
+        struct {
+            uint8_t filter_type;
+            uint8_t strength;
+            uint8_t dab_flags;
+            int32_t dab_x;
+            int32_t dab_y;
+            uint32_t dab_size;
+            uint32_t dab_color;
+        } filter;
     };
     struct {
         int32_t last_x;
@@ -292,6 +312,7 @@ struct DP_BrushEngine {
             int dummy; // Make this initializable without the compiler whining.
             DP_PixelDabParams pixel;
             DP_MyPaintDabParams mypaint;
+            DP_FilterDabParams filter;
         } tentative_dab;
     } pixel;
     DP_BrushEnginePushMessageFn push_message;
@@ -1669,6 +1690,9 @@ static DP_FloodInDabFn make_flood_dab_mask(DP_BrushEngine *be, void *dab)
         return make_flood_dab_mask_soft(be, dab);
     case DP_BRUSH_ENGINE_ACTIVE_MYPAINT:
         return make_flood_dab_mask_mypaint(be, dab);
+    case DP_BRUSH_ENGINE_ACTIVE_FILTER:
+        // Filter brush uses soft round mask
+        return make_flood_dab_mask_soft(be, dab);
     }
     DP_UNREACHABLE();
 }
@@ -2805,6 +2829,40 @@ void DP_brush_engine_mypaint_brush_set(DP_BrushEngine *be,
     }
 }
 
+void DP_brush_engine_filter_brush_set(DP_BrushEngine *be,
+                                      uint8_t filter_type, uint8_t strength,
+                                      const DP_BrushEngineStrokeParams *besp,
+                                      const DP_UPixelFloat *color_override,
+                                      bool eraser_override)
+{
+    DP_ASSERT(be);
+    DP_ASSERT(besp);
+    DP_ASSERT(besp->layer_id >= DP_LAYER_ID_MIN);
+    DP_ASSERT(besp->layer_id <= DP_LAYER_ID_MAX);
+
+    set_common_stroke_params(be, besp);
+    be->active = DP_BRUSH_ENGINE_ACTIVE_FILTER;
+
+    be->filter.filter_type = filter_type;
+    be->filter.strength = strength;
+    be->filter.dab_x = 0;
+    be->filter.dab_y = 0;
+    be->filter.dab_size = 0;
+    be->filter.dab_color = 0;
+
+    // Filter brush uses indirect paint mode for non-destructive editing
+    be->mypaint.paint_mode = DP_PAINT_MODE_INDIRECT_NORMAL;
+    be->mypaint.blend_mode = eraser_override
+                                ? DP_BLEND_MODE_ERASE
+                                : DP_BLEND_MODE_NORMAL;
+    apply_layer_alpha_lock(&be->mypaint.blend_mode, besp->layer_alpha_lock);
+
+    be->pixel.snap = false;
+    be->pixel.perfect = false;
+    be->filter.dab_flags = 0;
+    (void)color_override; // Unused for now
+}
+
 
 static uint8_t get_dab_blend_mode(DP_PaintMode paint_mode,
                                   DP_BlendMode blend_mode)
@@ -3020,6 +3078,71 @@ static void flush_mypaint_dabs(DP_BrushEngine *be, int used)
     be->push_message(be->user, msg);
 }
 
+// Filter brush engine - applies non-destructive filters (blur, sharpen, etc.)
+typedef enum DP_FilterType {
+    DP_FILTER_BLUR = 0,
+    DP_FILTER_SHARPEN = 1,
+    DP_FILTER_DESATURATE = 2,
+    DP_FILTER_HUE_SATURATION = 3,
+    DP_FILTER_LEVELS = 4,
+} DP_FilterType;
+
+static void first_dab_filter(DP_BrushEngine *be, float x, float y, float pressure)
+{
+    be->filter.dab_x = DP_float_to_int32(x);
+    be->filter.dab_y = DP_float_to_int32(y);
+    be->filter.dab_size = 0; // Will be set by stroke_filter
+    be->filter.dab_color = 0;
+    be->filter.strength = 128; // Default 50% strength
+}
+
+static void stroke_filter(DP_BrushEngine *be, float x, float y, float pressure,
+                          float delta_sec)
+{
+    // For filter brush, we accumulate the stroke area and apply filter
+    // For now, just update the dab position
+    be->filter.dab_x = DP_float_to_int32(x);
+    be->filter.dab_y = DP_float_to_int32(y);
+    // Size is controlled by pressure
+    be->filter.dab_size = DP_float_to_uint32(pressure * 100.0f + 10.0f);
+    // Color is the filter type encoded in the color
+    be->filter.dab_color = (be->filter.filter_type << 24) | 0xFFFFFF;
+}
+
+static void stroke_to_filter(DP_BrushEngine *be, DP_BrushPoint bp)
+{
+    if (be->stroke.in_progress) {
+        float delta_sec = DP_max_float(
+            DP_llong_to_float(bp.time_msec - be->stroke.last_time_msec) / 1000.0f,
+            0.0001f);
+        stroke_filter(be, bp.x, bp.y, bp.pressure, delta_sec);
+    }
+    else {
+        be->stroke.in_progress = true;
+        first_dab_filter(be, bp.x, bp.y, bp.pressure);
+    }
+    be->filter.dab_x = DP_float_to_int32(bp.x);
+    be->filter.dab_y = DP_float_to_int32(bp.y);
+}
+
+static void flush_filter_dabs(DP_BrushEngine *be, int used)
+{
+    // For filter brush, we send a custom message with filter parameters
+    // For now, reuse the classic dab message with special mode
+    // In a full implementation, this would be a new message type
+    uint8_t dab_blend_mode = get_dab_blend_mode(be->mypaint.paint_mode,
+                                                 be->mypaint.blend_mode);
+    uint32_t dab_color = be->filter.dab_color;
+    // In indirect mode, alpha on the color is handled by blend mode
+    if (be->mypaint.paint_mode != DP_PAINT_MODE_DIRECT) {
+        dab_color &= (uint32_t)0xffffff;
+    }
+    be->push_message(be->user, DP_msg_draw_dabs_classic_new(
+        be->stroke.context_id, (uint8_t)be->filter.dab_flags,
+        DP_int_to_uint32(be->layer_id), be->filter.dab_x, be->filter.dab_y,
+        dab_color, dab_blend_mode, set_soft_dabs, used, be));
+}
+
 void DP_brush_engine_dabs_flush(DP_BrushEngine *be)
 {
     DP_ASSERT(be);
@@ -3034,6 +3157,9 @@ void DP_brush_engine_dabs_flush(DP_BrushEngine *be)
             break;
         case DP_BRUSH_ENGINE_ACTIVE_MYPAINT:
             flush_mypaint_dabs(be, used);
+            break;
+        case DP_BRUSH_ENGINE_ACTIVE_FILTER:
+            flush_filter_dabs(be, used);
             break;
         default:
             DP_UNREACHABLE();
@@ -3566,6 +3692,11 @@ static void stroke_to(DP_BrushEngine *be, DP_BrushPoint bp,
                      bp.time_msec);
         stroke_to_mypaint(be, bp);
         break;
+    case DP_BRUSH_ENGINE_ACTIVE_FILTER:
+        DP_EVENT_LOG("stroke_to active=filter x=%f y=%f pressure=%f time_msec=%lld",
+                     bp.x, bp.y, bp.pressure, bp.time_msec);
+        stroke_to_filter(be, bp);
+        break;
     default:
         DP_UNREACHABLE();
     }
@@ -3631,6 +3762,10 @@ void DP_brush_engine_offset_add(DP_BrushEngine *be, float x, float y)
         // MyPaint brushes don't support the canvas getting moved or resized
         // while a stroke is active, so we can't apply the offset here. But
         // it's not a terribly useful feature to begin with, so it's fine.
+        break;
+    case DP_BRUSH_ENGINE_ACTIVE_FILTER:
+        be->filter.dab_x += x;
+        be->filter.dab_y += y;
         break;
     default:
         DP_UNREACHABLE();

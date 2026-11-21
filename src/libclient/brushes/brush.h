@@ -340,7 +340,7 @@ private:
 
 class ActiveBrush final {
 public:
-	enum ActiveType { CLASSIC, MYPAINT };
+	enum ActiveType { CLASSIC, MYPAINT, FILTER };
 
 	ActiveBrush(ActiveType activeType = CLASSIC);
 	~ActiveBrush() = default;
@@ -411,6 +411,12 @@ public:
 	bool isConfidential() const;
 	void setConfidential(bool confidential);
 
+	// Filter brush properties
+	uint8_t filterType() const { return m_filterType; }
+	void setFilterType(uint8_t filterType) { m_filterType = filterType; }
+	uint8_t filterStrength() const { return m_filterStrength; }
+	void setFilterStrength(uint8_t strength) { m_filterStrength = strength; }
+
 	QByteArray toJson(bool includeSlotProperties = false) const;
 	QByteArray toExportJson(const QString &description) const;
 	QJsonObject toShareJson() const;
@@ -438,6 +444,8 @@ private:
 	ActiveType m_activeType;
 	ClassicBrush m_classic;
 	MyPaintBrush m_myPaint;
+	uint8_t m_filterType = 0;
+	uint8_t m_filterStrength = 128;
 	bool m_eraserOverride = false;
 };
 

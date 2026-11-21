@@ -84,6 +84,10 @@ public:
 		const DP_MyPaintBrush &brush, const DP_MyPaintSettings &settings,
 		const DP_BrushEngineStrokeParams &besp, bool eraserOverride);
 
+	void setFilterBrush(
+		uint8_t filterType, uint8_t strength,
+		const DP_BrushEngineStrokeParams &besp, bool eraserOverride);
+
 	void flushDabs();
 
 	const net::MessageList &messages() const { return m_messages; }

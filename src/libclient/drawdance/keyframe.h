@@ -3,6 +3,7 @@
 #ifndef DRAWDANCE_KEYFRAME_H
 #define DRAWDANCE_KEYFRAME_H
 
+#include <QColor>
 #include <QString>
 #include <QVector>
 
@@ -31,6 +32,8 @@ public:
 	int layerId() const;
 
 	QString title() const;
+
+	QColor color() const;
 
 	QVector<DP_KeyFrameLayer> layers() const;
 

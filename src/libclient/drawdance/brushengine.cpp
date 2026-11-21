@@ -107,6 +107,14 @@ void BrushEngine::setMyPaintBrush(
 		m_data, &brush, &settings, &besp, nullptr, eraserOverride);
 }
 
+void BrushEngine::setFilterBrush(
+	uint8_t filterType, uint8_t strength,
+	const DP_BrushEngineStrokeParams &besp, bool eraserOverride)
+{
+	DP_brush_engine_filter_brush_set(
+		m_data, filterType, strength, &besp, nullptr, eraserOverride);
+}
+
 void BrushEngine::flushDabs()
 {
 	DP_brush_engine_dabs_flush(m_data);

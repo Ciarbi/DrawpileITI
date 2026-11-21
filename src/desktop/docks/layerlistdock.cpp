@@ -251,6 +251,15 @@ LayerList::LayerList(QWidget *parent)
 	opacitySliderLayout->addWidget(m_opacitySlider);
 	rootLayout->addLayout(opacitySliderLayout);
 
+	// Layer color filter
+	m_layerColorFilter = new QComboBox;
+	m_layerColorFilter->setToolTip(tr("Filter layers by color label"));
+	utils::setWidgetRetainSizeWhenHidden(m_layerColorFilter, true);
+	connect(
+		m_layerColorFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
+		this, &LayerList::layerColorFilterChanged);
+	rootLayout->addWidget(m_layerColorFilter);
+
 	LayerListDelegate *del = new LayerListDelegate(this);
 	m_view = new LayerListTreeView(this, del);
 	m_view->setHeaderHidden(true);
@@ -305,7 +314,25 @@ LayerList::LayerList(QWidget *parent)
 void LayerList::setCanvas(canvas::CanvasModel *canvas)
 {
 	m_canvas = canvas;
-	m_view->setModel(canvas->layerlist());
+
+	// Set up proxy model for layer color filtering
+	m_layerProxyModel = new QSortFilterProxyModel(this);
+	m_layerProxyModel->setSourceModel(canvas->layerlist());
+	m_layerProxyModel->setFilterRole(canvas::LayerListModel::ColorRole);
+	m_layerProxyModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
+	m_view->setModel(m_layerProxyModel);
+
+	// Populate color filter combo box
+	m_layerColorFilter->clear();
+	m_layerColorFilter->addItem(tr("All Colors"), QVariant());
+	const QVector<utils::MarkerColor> &markerColors = utils::markerColors();
+	for (const utils::MarkerColor &mc : markerColors) {
+		if (mc.color != Qt::transparent) {
+			QIcon icon = utils::makeColorIcon(16, mc.color);
+			m_layerColorFilter->addItem(icon, mc.name, mc.color);
+		}
+	}
+	m_layerColorFilter->setCurrentIndex(0);
 
 	m_aclmenu->setUserList(canvas->userlist()->onlineUsers());
 
@@ -732,12 +759,20 @@ void LayerList::forceRefreshMargin()
 void LayerList::selectLayer(int id)
 {
 	disableAutoselectAny();
-	selectLayerIndex(m_canvas->layerlist()->layerIndex(id), true);
+	QModelIndex sourceIndex = m_canvas->layerlist()->layerIndex(id);
+	if (sourceIndex.isValid() && m_layerProxyModel) {
+		QModelIndex proxyIndex = m_layerProxyModel->mapFromSource(sourceIndex);
+		selectLayerIndex(proxyIndex, true);
+	}
 }
 
 void LayerList::autoSelectLayer(int id)
 {
-	selectLayerIndex(m_canvas->layerlist()->layerIndex(id), true);
+	QModelIndex sourceIndex = m_canvas->layerlist()->layerIndex(id);
+	if (sourceIndex.isValid() && m_layerProxyModel) {
+		QModelIndex proxyIndex = m_layerProxyModel->mapFromSource(sourceIndex);
+		selectLayerIndex(proxyIndex, true);
+	}
 }
 
 void LayerList::clearLayerSelection()
@@ -753,15 +788,18 @@ void LayerList::setCheckedLayers(const QSet<int> &layerIds)
 
 	QItemSelection sel;
 	for(int checkedLayerId : layerIds) {
-		QModelIndex idx = layers->layerIndex(checkedLayerId);
-		if(idx.isValid()) {
-			sel.select(idx, idx);
+		QModelIndex sourceIdx = layers->layerIndex(checkedLayerId);
+		if(sourceIdx.isValid() && m_layerProxyModel) {
+			QModelIndex proxyIdx = m_layerProxyModel->mapFromSource(sourceIdx);
+			if (proxyIdx.isValid()) {
+				sel.select(proxyIdx, proxyIdx);
+			}
 		}
 	}
 
-	QModelIndex idx = currentSelection();
-	if(idx.isValid()) {
-		sel.select(idx, idx);
+	QModelIndex proxyIdx = currentSelection();
+	if(proxyIdx.isValid()) {
+		sel.select(proxyIdx, proxyIdx);
 	}
 
 	m_view->selectionModel()->select(sel, QItemSelectionModel::ClearAndSelect);
@@ -1056,11 +1094,15 @@ void LayerList::selectLayerByColor(QAction *action)
 {
 	if(m_canvas) {
 		disableAutoselectAny();
-		selectLayerIndex(
-			m_canvas->layerlist()->findNextColorLayer(
-				currentSelection(),
-				action->property("markercolor").value<QColor>()),
-			true);
+		QModelIndex proxyIndex = currentSelection();
+		QModelIndex sourceIndex = m_layerProxyModel ? m_layerProxyModel->mapToSource(proxyIndex) : proxyIndex;
+		QModelIndex nextSourceIndex = m_canvas->layerlist()->findNextColorLayer(
+			sourceIndex,
+			action->property("markercolor").value<QColor>());
+		if (nextSourceIndex.isValid() && m_layerProxyModel) {
+			QModelIndex nextProxyIndex = m_layerProxyModel->mapFromSource(nextSourceIndex);
+			selectLayerIndex(nextProxyIndex, true);
+		}
 	}
 }
 
@@ -1942,11 +1984,39 @@ void LayerList::beforeLayerReset()
 	m_nearestToDeletedId = m_canvas->layerlist()->findNearestLayer(m_currentId);
 	m_lastScrollPosition = m_view->verticalScrollBar()->value();
 	m_expandedGroups.clear();
-	for(const canvas::LayerListItem &item :
-		m_canvas->layerlist()->layerItems()) {
-		if(m_view->isExpanded(m_canvas->layerlist()->layerIndex(item.id))) {
-			m_expandedGroups.insert(item.id);
+	if (m_layerProxyModel) {
+		// Iterate through proxy model to find expanded items
+		for (int row = 0; row < m_layerProxyModel->rowCount(); ++row) {
+			QModelIndex proxyIndex = m_layerProxyModel->index(row, 0);
+			if (m_view->isExpanded(proxyIndex)) {
+				QModelIndex sourceIndex = m_layerProxyModel->mapToSource(proxyIndex);
+				if (sourceIndex.isValid()) {
+					int layerId = sourceIndex.data(canvas::LayerListModel::IdRole).toInt();
+					if (layerId > 0) {
+						m_expandedGroups.insert(layerId);
+					}
+				}
+			}
+			// Check children recursively
+			checkExpandedChildren(proxyIndex);
 		}
+	}
+}
+
+void LayerList::checkExpandedChildren(const QModelIndex &parentProxyIndex)
+{
+	for (int row = 0; row < m_layerProxyModel->rowCount(parentProxyIndex); ++row) {
+		QModelIndex childProxyIndex = m_layerProxyModel->index(row, 0, parentProxyIndex);
+		if (m_view->isExpanded(childProxyIndex)) {
+			QModelIndex sourceIndex = m_layerProxyModel->mapToSource(childProxyIndex);
+			if (sourceIndex.isValid()) {
+				int layerId = sourceIndex.data(canvas::LayerListModel::IdRole).toInt();
+				if (layerId > 0) {
+					m_expandedGroups.insert(layerId);
+				}
+			}
+		}
+		checkExpandedChildren(childProxyIndex);
 	}
 }
 
@@ -1956,9 +2026,12 @@ void LayerList::afterLayerReset()
 	m_view->setAnimated(false);
 
 	for(int layerId : m_expandedGroups) {
-		QModelIndex index = m_canvas->layerlist()->layerIndex(layerId);
-		if(index.isValid()) {
-			m_view->setExpanded(index, true);
+		QModelIndex sourceIndex = m_canvas->layerlist()->layerIndex(layerId);
+		if(sourceIndex.isValid()) {
+			QModelIndex proxyIndex = m_layerProxyModel->mapFromSource(sourceIndex);
+			if (proxyIndex.isValid()) {
+				m_view->setExpanded(proxyIndex, true);
+			}
 		}
 	}
 
@@ -1978,39 +2051,50 @@ void LayerList::afterLayerReset()
 			selectedChanged = true;
 		}
 	} else {
-		QModelIndex currentIndex = layers->layerIndex(m_currentId);
-		if(currentIndex.isValid()) {
-			QItemSelectionModel *selectionModel = m_view->selectionModel();
-			QSignalBlocker blocker(selectionModel);
-			selectionModel->setCurrentIndex(
-				currentIndex, QItemSelectionModel::SelectCurrent |
-								  QItemSelectionModel::Clear);
+		QModelIndex currentSourceIndex = layers->layerIndex(m_currentId);
+		if(currentSourceIndex.isValid()) {
+			QModelIndex currentProxyIndex = m_layerProxyModel->mapFromSource(currentSourceIndex);
+			if (currentProxyIndex.isValid()) {
+				QItemSelectionModel *selectionModel = m_view->selectionModel();
+				QSignalBlocker blocker(selectionModel);
+				selectionModel->setCurrentIndex(
+					currentProxyIndex, QItemSelectionModel::SelectCurrent |
+									 QItemSelectionModel::Clear);
 
-			if(!m_selectedIds.contains(m_currentId)) {
-				m_selectedIds.insert(m_currentId);
-				selectedChanged = true;
-			}
+				if(!m_selectedIds.contains(m_currentId)) {
+					m_selectedIds.insert(m_currentId);
+					selectedChanged = true;
+				}
 
-			QSet<int>::iterator it = m_selectedIds.begin();
-			QSet<int>::iterator end = m_selectedIds.end();
-			while(it != end) {
-				int selectedId = *it;
-				if(selectedId == m_currentId) {
-					++it;
-				} else {
-					QModelIndex selectedIndex = layers->layerIndex(selectedId);
-					if(selectedIndex.isValid()) {
-						selectionModel->select(
-							selectedIndex, QItemSelectionModel::Select);
+				QSet<int>::iterator it = m_selectedIds.begin();
+				QSet<int>::iterator end = m_selectedIds.end();
+				while(it != end) {
+					int selectedId = *it;
+					if(selectedId == m_currentId) {
 						++it;
 					} else {
-						it = m_selectedIds.erase(it);
-						selectedChanged = true;
+						QModelIndex selectedSourceIndex = layers->layerIndex(selectedId);
+						if(selectedSourceIndex.isValid()) {
+							QModelIndex selectedProxyIndex = m_layerProxyModel->mapFromSource(selectedSourceIndex);
+							if (selectedProxyIndex.isValid()) {
+								selectionModel->select(
+									selectedProxyIndex, QItemSelectionModel::Select);
+								++it;
+							} else {
+								it = m_selectedIds.erase(it);
+								selectedChanged = true;
+							}
+						} else {
+							it = m_selectedIds.erase(it);
+							selectedChanged = true;
+						}
 					}
 				}
-			}
 
-			updateCurrent(currentIndex);
+				updateCurrent(currentProxyIndex);
+			} else {
+				selectLayer(m_nearestToDeletedId);
+			}
 		} else {
 			selectLayer(m_nearestToDeletedId);
 		}
@@ -2203,9 +2287,11 @@ void LayerList::selectionChanged(
 
 	if((m_currentId == 0 && !m_selectedIds.isEmpty()) ||
 	   !m_selectedIds.contains(m_currentId)) {
-		selectionModel->setCurrentIndex(
-			m_canvas->layerlist()->findHighestLayer(m_selectedIds),
-			QItemSelectionModel::Current);
+		QModelIndex sourceIndex = m_canvas->layerlist()->findHighestLayer(m_selectedIds);
+		if (sourceIndex.isValid() && m_layerProxyModel) {
+			QModelIndex proxyIndex = m_layerProxyModel->mapFromSource(sourceIndex);
+			selectionModel->setCurrentIndex(proxyIndex, QItemSelectionModel::Current);
+		}
 	} else {
 		updateLockedControls();
 	}
@@ -2243,8 +2329,11 @@ void LayerList::updateCurrent(const QModelIndex &current)
 
 void LayerList::updateUiFromCurrent()
 {
+	QModelIndex proxyIndex = currentSelection();
+	QModelIndex sourceIndex = m_layerProxyModel ? m_layerProxyModel->mapToSource(proxyIndex) : proxyIndex;
+	
 	const canvas::LayerListItem &layer =
-		currentSelection().data().value<canvas::LayerListItem>();
+		sourceIndex.data().value<canvas::LayerListItem>();
 	m_currentId = layer.id;
 	m_currentTitle = layer.title;
 	m_currentColor = layer.color;
@@ -2385,6 +2474,22 @@ void LayerList::opacityChanged(int value)
 			m_updateOpacity = value;
 		}
 		m_debounceTimer->start();
+	}
+}
+
+void LayerList::layerColorFilterChanged(int index)
+{
+	if (!m_layerProxyModel || !m_layerColorFilter) {
+		return;
+	}
+
+	QVariant filterData = m_layerColorFilter->itemData(index);
+	if (filterData.isValid() && filterData.canConvert<QColor>()) {
+		QColor color = filterData.value<QColor>();
+		m_layerProxyModel->setFilterFixedString(color.name(QColor::HexRgb));
+	} else {
+		// "All Colors" selected - clear filter
+		m_layerProxyModel->setFilterFixedString(QString());
 	}
 }
 

@@ -72,6 +72,12 @@ QString KeyFrame::title() const
 	return QString::fromUtf8(title, compat::castSize(length));
 }
 
+QColor KeyFrame::color() const
+{
+	uint32_t color = DP_key_frame_color(m_data);
+	return QColor::fromRgba(color);
+}
+
 QVector<DP_KeyFrameLayer> KeyFrame::layers() const
 {
 	int count;

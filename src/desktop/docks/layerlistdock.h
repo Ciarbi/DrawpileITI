@@ -9,6 +9,7 @@
 #include <QModelIndexList>
 #include <QScroller>
 #include <QSet>
+#include <QSortFilterProxyModel>
 #include <QVector>
 #include <functional>
 
@@ -175,6 +176,7 @@ private:
 	void alphaPreserveChanged(bool alphaPreserve);
 	void blendModeChanged(int index);
 	void opacityChanged(int value);
+	void layerColorFilterChanged(int index);
 
 	void triggerUpdate();
 
@@ -193,6 +195,7 @@ private:
 	void updateCurrent(const QModelIndex &current);
 	void updateUiFromCurrent();
 	void setAutomaticAlphaPreserve(bool automaticAlphaPreserve);
+	void checkExpandedChildren(const QModelIndex &parentProxyIndex);
 
 	void addOrPromptLayerOrGroup(bool group);
 	void addLayerOrGroupFromPrompt(
@@ -295,6 +298,8 @@ private:
 	widgets::GroupedToolButton *m_sketchButton;
 	widgets::GroupedToolButton *m_sketchTintButton;
 	QTreeView *m_view;
+	QSortFilterProxyModel *m_layerProxyModel;
+	QComboBox *m_layerColorFilter;
 
 	Actions m_actions;
 };

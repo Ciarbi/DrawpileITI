@@ -1599,17 +1599,31 @@ ActiveBrush::fromJson(const QJsonObject &json, bool includeSlotProperties)
 	ActiveBrush brush;
 	const QJsonValue type = json["type"];
 	if(type == "dp-active") {
-		brush.setActiveType(
-			json["active_type"] == "mypaint" ? MYPAINT : CLASSIC);
+		QString activeTypeStr = json["active_type"].toString();
+		if (activeTypeStr == "mypaint") {
+			brush.setActiveType(MYPAINT);
+		} else if (activeTypeStr == "filter") {
+			brush.setActiveType(FILTER);
+		} else {
+			brush.setActiveType(CLASSIC);
+		}
 		const QJsonObject o = json["settings"].toObject();
 		brush.setClassic(ClassicBrush::fromJson(o["classic"].toObject()));
 		brush.setMyPaint(MyPaintBrush::fromJson(o["mypaint"].toObject()));
+		if (brush.activeType() == FILTER) {
+			brush.setFilterType(o["filterType"].toInt(0));
+			brush.setFilterStrength(o["filterStrength"].toInt(128));
+		}
 	} else if(type == "dp-classic") {
 		brush.setActiveType(CLASSIC);
 		brush.setClassic(ClassicBrush::fromJson(json));
 	} else if(type == "dp-mypaint") {
 		brush.setActiveType(MYPAINT);
 		brush.setMyPaint(MyPaintBrush::fromJson(json));
+	} else if(type == "dp-filter") {
+		brush.setActiveType(FILTER);
+		brush.setFilterType(json["filterType"].toInt(0));
+		brush.setFilterStrength(json["filterStrength"].toInt(128));
 	} else {
 		qWarning(
 			"ActiveBrush::fromJson: type is neither dp-active, dp-classic "
@@ -1632,6 +1646,11 @@ bool ActiveBrush::fromExportJson(const QJsonObject &json)
 	if(json["drawpile_classic_settings"].isObject()) {
 		setActiveType(CLASSIC);
 		return m_classic.fromExportJson(json);
+	} else if (json["filterType"].isDouble()) {
+		setActiveType(FILTER);
+		m_filterType = json["filterType"].toInt(0);
+		m_filterStrength = json["filterStrength"].toInt(128);
+		return true;
 	} else {
 		setActiveType(MYPAINT);
 		return m_myPaint.fromExportJson(json);
@@ -1640,21 +1659,39 @@ bool ActiveBrush::fromExportJson(const QJsonObject &json)
 
 QString ActiveBrush::presetType() const
 {
-	return m_activeType == MYPAINT ? QStringLiteral("mypaint")
-								   : QStringLiteral("classic");
+	if (m_activeType == MYPAINT) {
+		return QStringLiteral("mypaint");
+	} else if (m_activeType == FILTER) {
+		return QStringLiteral("filter");
+	} else {
+		return QStringLiteral("classic");
+	}
 }
 
 QByteArray ActiveBrush::presetData() const
 {
-	QJsonObject json =
-		m_activeType == MYPAINT ? m_myPaint.toJson() : m_classic.toJson();
+	QJsonObject json;
+	if (m_activeType == MYPAINT) {
+		json = m_myPaint.toJson();
+	} else if (m_activeType == FILTER) {
+		json["filterType"] = m_filterType;
+		json["filterStrength"] = m_filterStrength;
+	} else {
+		json = m_classic.toJson();
+	}
 	return QJsonDocument(json).toJson(QJsonDocument::Compact);
 }
 
 QPixmap ActiveBrush::presetThumbnail() const
 {
-	return m_activeType == MYPAINT ? m_myPaint.presetThumbnail()
-								   : m_classic.presetThumbnail();
+	if (m_activeType == MYPAINT) {
+		return m_myPaint.presetThumbnail();
+	} else if (m_activeType == FILTER) {
+		// Return a default thumbnail for filter brushes
+		return QPixmap();
+	} else {
+		return m_classic.presetThumbnail();
+	}
 }
 
 void ActiveBrush::setInBrushEngine(
@@ -1662,10 +1699,12 @@ void ActiveBrush::setInBrushEngine(
 {
 	if(m_activeType == CLASSIC) {
 		be.setClassicBrush(m_classic, besp, isEraserOverride());
-	} else {
+	} else if (m_activeType == MYPAINT) {
 		be.setMyPaintBrush(
 			m_myPaint.constBrush(), m_myPaint.constSettings(), besp,
 			isEraserOverride());
+	} else if (m_activeType == FILTER) {
+		be.setFilterBrush(m_filterType, m_filterStrength, besp, isEraserOverride());
 	}
 }
 
@@ -1675,10 +1714,13 @@ void ActiveBrush::setInStrokeWorker(
 {
 	if(m_activeType == CLASSIC) {
 		sw.setClassicBrush(m_classic, besp, isEraserOverride(), colorOverride);
-	} else {
+	} else if (m_activeType == MYPAINT) {
 		sw.setMyPaintBrush(
 			m_myPaint.constBrush(), m_myPaint.constSettings(), besp,
 			isEraserOverride(), colorOverride);
+	} else if (m_activeType == FILTER) {
+		// StrokeWorker doesn't have setFilterBrush yet, fall back to classic for now
+		sw.setClassicBrush(m_classic, besp, isEraserOverride(), colorOverride);
 	}
 }
 
@@ -1688,9 +1730,12 @@ void ActiveBrush::renderPreview(
 {
 	if(m_activeType == CLASSIC) {
 		bp.renderClassic(m_classic, style, shape);
-	} else {
+	} else if (m_activeType == MYPAINT) {
 		bp.renderMyPaint(
 			m_myPaint.constBrush(), m_myPaint.constSettings(), style, shape);
+	} else if (m_activeType == FILTER) {
+		// For filter brush, render a classic brush preview for now
+		bp.renderClassic(m_classic, style, shape);
 	}
 }
 
