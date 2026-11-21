@@ -3108,7 +3108,7 @@ static void stroke_filter(DP_BrushEngine *be, float x, float y, float pressure,
     // Size is controlled by pressure
     be->filter.dab_size = DP_float_to_uint32(pressure * 100.0f + 10.0f);
     // Color is the filter type encoded in the color
-    be->filter.dab_color = (be->filter.filter_type << 24) | 0xFFFFFF;
+    be->filter.dab_color = ((uint32_t)be->filter.filter_type << 24) | 0xFFFFFFu;
 }
 
 static void stroke_to_filter(DP_BrushEngine *be, DP_BrushPoint bp)
