@@ -3089,6 +3089,7 @@ typedef enum DP_FilterType {
 
 static void first_dab_filter(DP_BrushEngine *be, float x, float y, float pressure)
 {
+    (void)pressure;
     be->filter.dab_x = DP_float_to_int32(x);
     be->filter.dab_y = DP_float_to_int32(y);
     be->filter.dab_size = 0; // Will be set by stroke_filter
@@ -3099,6 +3100,7 @@ static void first_dab_filter(DP_BrushEngine *be, float x, float y, float pressur
 static void stroke_filter(DP_BrushEngine *be, float x, float y, float pressure,
                           float delta_sec)
 {
+    (void)delta_sec;
     // For filter brush, we accumulate the stroke area and apply filter
     // For now, just update the dab position
     be->filter.dab_x = DP_float_to_int32(x);
@@ -3764,8 +3766,8 @@ void DP_brush_engine_offset_add(DP_BrushEngine *be, float x, float y)
         // it's not a terribly useful feature to begin with, so it's fine.
         break;
     case DP_BRUSH_ENGINE_ACTIVE_FILTER:
-        be->filter.dab_x += x;
-        be->filter.dab_y += y;
+        be->filter.dab_x += (int32_t)x;
+        be->filter.dab_y += (int32_t)y;
         break;
     default:
         DP_UNREACHABLE();
