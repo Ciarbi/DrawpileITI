@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "desktop/docks/colorspinner.h"
+#include "desktop/config/colorwheelconfig.h"
 #include "desktop/dialogs/shadeselectordialog.h"
 #include "desktop/docks/colorpalette.h"
 #include "desktop/docks/enums.h"
@@ -57,10 +58,9 @@ struct ColorSpinnerDock::Private {
 	widgets::GroupedToolButton *menuButton = nullptr;
 	QAction *shapeRotatingTriangleAction = nullptr;
 	QAction *shapeRotatingSquareAction = nullptr;
-	QAction *shapeFixedTriangleAction = nullptr;
+	QAction *shapeUprightTriangleAction = nullptr;
+	QAction *shapeSidewaysTriangleAction = nullptr;
 	QAction *shapeFixedSquareAction = nullptr;
-	QAction *angleFixedAction = nullptr;
-	QAction *angleRotatingAction = nullptr;
 	QAction *colorSpaceHsvAction = nullptr;
 	QAction *colorSpaceHslAction = nullptr;
 	QAction *colorSpaceHclAction = nullptr;
@@ -94,7 +94,9 @@ ColorSpinnerDock::ColorSpinnerDock(QWidget *parent)
 	TitleWidget *titlebar = new TitleWidget(this);
 	setTitleBarWidget(titlebar);
 
-	config::Config *cfg = dpAppConfig();
+	DrawpileApp &app = dpApp();
+	config::Config *cfg = app.config();
+	config::ColorWheelConfig *cwc = app.colorWheelConfig();
 	QMenu *menu = new QMenu(this);
 
 	QMenu *shapeMenu = menu->addMenu(tr("Shape"));
@@ -104,58 +106,39 @@ ColorSpinnerDock::ColorSpinnerDock(QWidget *parent)
 		shapeMenu->addAction(tr("Rotating triangle"));
 	d->shapeRotatingTriangleAction->setCheckable(true);
 	shapeGroup->addAction(d->shapeRotatingTriangleAction);
-	connect(
-		d->shapeRotatingTriangleAction, &QAction::toggled, this,
-		[this, cfg](bool toggled) {
-			if(toggled && !d->updating) {
-				cfg->setColorWheelShape(
-					int(color_widgets::ColorWheel::ShapeTriangle));
-				cfg->setColorWheelAngle(
-					int(color_widgets::ColorWheel::AngleRotating));
-			}
-		});
+	connect(d->shapeRotatingTriangleAction, &QAction::triggered, this, [cwc] {
+		cwc->setType(config::ColorWheelConfig::TYPE_ROTATING_TRIANGLE);
+	});
 
 	d->shapeRotatingSquareAction = shapeMenu->addAction(tr("Rotating square"));
 	d->shapeRotatingSquareAction->setCheckable(true);
 	shapeGroup->addAction(d->shapeRotatingSquareAction);
-	connect(
-		d->shapeRotatingSquareAction, &QAction::toggled, this,
-		[this, cfg](bool toggled) {
-			if(toggled && !d->updating) {
-				cfg->setColorWheelShape(
-					int(color_widgets::ColorWheel::ShapeSquare));
-				cfg->setColorWheelAngle(
-					int(color_widgets::ColorWheel::AngleRotating));
-			}
-		});
+	connect(d->shapeRotatingSquareAction, &QAction::triggered, this, [cwc] {
+		cwc->setType(config::ColorWheelConfig::TYPE_ROTATING_SQUARE);
+	});
 
-	d->shapeFixedTriangleAction = shapeMenu->addAction(tr("Fixed triangle"));
-	d->shapeFixedTriangleAction->setCheckable(true);
-	shapeGroup->addAction(d->shapeFixedTriangleAction);
-	connect(
-		d->shapeFixedTriangleAction, &QAction::toggled, this,
-		[this, cfg](bool toggled) {
-			if(toggled && !d->updating) {
-				cfg->setColorWheelShape(
-					int(color_widgets::ColorWheel::ShapeTriangle));
-				cfg->setColorWheelAngle(
-					int(color_widgets::ColorWheel::AngleFixed));
-			}
-		});
+	d->shapeUprightTriangleAction =
+		shapeMenu->addAction(tr("Upright triangle"));
+	d->shapeUprightTriangleAction->setCheckable(true);
+	shapeGroup->addAction(d->shapeUprightTriangleAction);
+	connect(d->shapeUprightTriangleAction, &QAction::triggered, this, [cwc] {
+		cwc->setType(config::ColorWheelConfig::TYPE_UPRIGHT_TRIANGLE);
+	});
+
+	d->shapeSidewaysTriangleAction =
+		shapeMenu->addAction(tr("Sideways triangle"));
+	d->shapeSidewaysTriangleAction->setCheckable(true);
+	shapeGroup->addAction(d->shapeSidewaysTriangleAction);
+	connect(d->shapeSidewaysTriangleAction, &QAction::toggled, this, [cwc] {
+		cwc->setType(config::ColorWheelConfig::TYPE_SIDEWAYS_TRIANGLE);
+	});
 
 	d->shapeFixedSquareAction = shapeMenu->addAction(tr("Fixed square"));
 	d->shapeFixedSquareAction->setCheckable(true);
 	shapeGroup->addAction(d->shapeFixedSquareAction);
-	connect(
-		d->shapeFixedSquareAction, &QAction::toggled, this,
-		[this, cfg](bool toggled) {
-			if(toggled && !d->updating) {
-				cfg->setColorWheelShape(
-					int(color_widgets::ColorWheel::ShapeSquare));
-				cfg->setColorWheelAngle(
-					int(color_widgets::ColorWheel::AngleFixed));
-			}
-		});
+	connect(d->shapeFixedSquareAction, &QAction::toggled, this, [cwc] {
+		cwc->setType(config::ColorWheelConfig::TYPE_FIXED_SQUARE);
+	});
 
 	QMenu *colorSpaceMenu = menu->addMenu(tr("Color space"));
 	QActionGroup *colorSpaceGroup = new QActionGroup(this);
@@ -324,8 +307,6 @@ ColorSpinnerDock::ColorSpinnerDock(QWidget *parent)
 		d->colorwheel, &color_widgets::ColorWheel::customContextMenuRequested,
 		this, &ColorSpinnerDock::showContextMenu);
 
-	CFG_BIND_SET(cfg, ColorWheelShape, this, ColorSpinnerDock::setShape);
-	CFG_BIND_SET(cfg, ColorWheelAngle, this, ColorSpinnerDock::setAngle);
 	CFG_BIND_SET(cfg, ColorWheelSpace, this, ColorSpinnerDock::setColorSpace);
 	CFG_BIND_SET(cfg, ColorWheelMirror, this, ColorSpinnerDock::setMirror);
 	CFG_BIND_SET(cfg, ColorWheelAlign, this, ColorSpinnerDock::setAlign);
@@ -336,6 +317,11 @@ ColorSpinnerDock::ColorSpinnerDock(QWidget *parent)
 	CFG_BIND_ACTION(cfg, ColorShadesEnabled, d->showColorShadesAction);
 	CFG_BIND_SET(
 		cfg, ColorShadesEnabled, this, ColorSpinnerDock::setShadesEnabled);
+
+	connect(
+		cwc, &config::ColorWheelConfig::wheelConfigChanged, this,
+		&ColorSpinnerDock::updateColorWheelConfig);
+	updateColorWheelConfig();
 }
 
 ColorSpinnerDock::~ColorSpinnerDock()
@@ -409,22 +395,6 @@ void ColorSpinnerDock::setLastUsedColors(const color_widgets::ColorPalette &pal)
 		pal.count() == 0 ? d->colorwheel->color() : pal.colorAt(0);
 }
 
-void ColorSpinnerDock::setShape(int shape)
-{
-	QScopedValueRollback<bool> guard(d->updating, true);
-	d->colorwheel->setSelectorShape(
-		color_widgets::ColorWheel::ShapeEnum(shape));
-	updateShapeAction();
-}
-
-void ColorSpinnerDock::setAngle(int angle)
-{
-	QScopedValueRollback<bool> guard(d->updating, true);
-	d->colorwheel->setRotatingSelector(
-		angle != int(color_widgets::ColorWheel::AngleFixed));
-	updateShapeAction();
-}
-
 void ColorSpinnerDock::setColorSpace(int colorSpace)
 {
 	QScopedValueRollback<bool> guard(d->updating, true);
@@ -449,10 +419,8 @@ void ColorSpinnerDock::setMirror(bool mirror)
 	QScopedValueRollback<bool> guard(d->updating, true);
 	if(mirror) {
 		d->directionAscendingAction->setChecked(true);
-		d->colorwheel->setMirroredSelector(true);
 	} else {
 		d->directionDescendingAction->setChecked(true);
-		d->colorwheel->setMirroredSelector(false);
 	}
 }
 
@@ -526,18 +494,27 @@ void ColorSpinnerDock::setShadesEnabled(bool shadesEnabled)
 	}
 }
 
-void ColorSpinnerDock::updateShapeAction()
+void ColorSpinnerDock::updateColorWheelConfig()
 {
+	config::ColorWheelConfig *cwc = dpApp().colorWheelConfig();
+	cwc->applyToColorWheel(d->colorwheel);
+
 	QAction *action;
-	bool rotating = d->colorwheel->rotatingSelector();
-	switch(d->colorwheel->selectorShape()) {
-	case color_widgets::ColorWheel::ShapeSquare:
-		action =
-			rotating ? d->shapeRotatingSquareAction : d->shapeFixedSquareAction;
+	switch(cwc->type()) {
+	case config::ColorWheelConfig::TYPE_ROTATING_SQUARE:
+		action = d->shapeRotatingSquareAction;
+		break;
+	case config::ColorWheelConfig::TYPE_UPRIGHT_TRIANGLE:
+		action = d->shapeUprightTriangleAction;
+		break;
+	case config::ColorWheelConfig::TYPE_SIDEWAYS_TRIANGLE:
+		action = d->shapeSidewaysTriangleAction;
+		break;
+	case config::ColorWheelConfig::TYPE_FIXED_SQUARE:
+		action = d->shapeFixedSquareAction;
 		break;
 	default:
-		action = rotating ? d->shapeRotatingTriangleAction
-						  : d->shapeFixedTriangleAction;
+		action = d->shapeRotatingTriangleAction;
 		break;
 	}
 	action->setChecked(true);

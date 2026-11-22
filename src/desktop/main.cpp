@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "desktop/main.h"
 #include "cmake-config/config.h"
+#include "desktop/config/colorwheelconfig.h"
 #include "desktop/config/settingsconfig.h"
 #include "desktop/dialogs/startdialog.h"
 #include "desktop/mainwindow.h"
@@ -181,6 +182,7 @@ void DrawpileApp::initState()
 	Q_ASSERT(!m_recents);
 	m_state = new utils::StateDatabase{this};
 	m_recents = new utils::Recents{*m_state};
+	m_colorWheelConfig = new config::ColorWheelConfig(m_config, this);
 }
 
 bool DrawpileApp::event(QEvent *e)
