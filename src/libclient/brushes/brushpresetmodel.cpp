@@ -1759,6 +1759,25 @@ bool BrushPresetTagModel::isTagRowInBounds(int row) const
 
 BrushImportResult BrushPresetTagModel::importBrushPack(const QString &file)
 {
+	BundleFormat fmt = detectBundleFormat(file);
+	switch(fmt) {
+	case BundleFormat::Drawpile:
+		return importDrawpileBrushPack(file);
+	case BundleFormat::Krita:
+		return importKritaBundle(file);
+	case BundleFormat::Unknown:
+	default: {
+		BrushImportResult result = {{}, {}, 0};
+		result.errors.append(
+			tr("Unknown brush bundle format: '%1'").arg(file));
+		return result;
+	}
+	}
+}
+
+BrushImportResult BrushPresetTagModel::importDrawpileBrushPack(
+	const QString &file)
+{
 	BrushImportResult result = {{}, {}, 0};
 
 	drawdance::ZipReader zr{file};
@@ -1780,6 +1799,530 @@ BrushImportResult BrushPresetTagModel::importBrushPack(const QString &file)
 	d->refreshPresetCache();
 	endResetModel();
 	return result;
+}
+
+BundleFormat
+BrushPresetTagModel::detectBundleFormat(const QString &file)
+{
+	drawdance::ZipReader zr{file};
+	if(zr.isNull()) {
+		return BundleFormat::Unknown;
+	}
+
+	if(!zr.readFile(QStringLiteral("order.conf")).isNull()) {
+		return BundleFormat::Drawpile;
+	}
+
+	if(!zr.readFile(QStringLiteral("bundle.xml")).isNull()) {
+		return BundleFormat::Krita;
+	}
+
+	return BundleFormat::Unknown;
+}
+
+BrushImportResult BrushPresetTagModel::importKritaBundle(
+	const QString &file)
+{
+	BrushImportResult result = {{}, {}, 0};
+
+	drawdance::ZipReader zr{file};
+	if(zr.isNull()) {
+		qWarning("Error opening '%s': %s", qUtf8Printable(file), DP_error());
+		result.errors.append(tr("Can't open '%1'.").arg(file));
+		return result;
+	}
+
+	QDomDocument doc;
+	QByteArray bundleXml = zr.readFile(QStringLiteral("bundle.xml")).readBytes();
+	if(bundleXml.isEmpty()) {
+		result.errors.append(tr("Invalid Krita bundle: bundle.xml not found"));
+		return result;
+	}
+
+	QString errorMsg;
+	int errorLine, errorCol;
+	if(!doc.setContent(bundleXml, &errorMsg, &errorLine, &errorCol)) {
+		qWarning("Error parsing bundle.xml: %s at line %d, col %d",
+			qUtf8Printable(errorMsg), errorLine, errorCol);
+		result.errors.append(
+			tr("Invalid Krita bundle: cannot parse bundle.xml"));
+		return result;
+	}
+
+	QDomElement root = doc.documentElement();
+	if(root.tagName() != QStringLiteral("bundle")) {
+		result.errors.append(
+			tr("Invalid Krita bundle: missing <bundle> root element"));
+		return result;
+	}
+
+	QString bundleName = root.attribute(QStringLiteral("name"));
+	if(bundleName.isEmpty()) {
+		bundleName = QFileInfo(file).baseName();
+	}
+
+	QDomNodeList presetNodes =
+		doc.elementsByTagName(QStringLiteral("brush"));
+
+	beginResetModel();
+	int imported = 0;
+	for(int i = 0; i < presetNodes.size(); ++i) {
+		QDomElement presetElem = presetNodes.at(i).toElement();
+		if(presetElem.isNull()) {
+			continue;
+		}
+
+		QString presetPath = presetElem.attribute(QStringLiteral("file"));
+		if(presetPath.isEmpty()) {
+			presetPath = QStringLiteral("presets/%1.kpp")
+				.arg(presetElem.attribute(QStringLiteral("id")));
+		}
+
+		QByteArray presetData =
+			zr.readFile(presetPath).readBytes();
+		if(presetData.isEmpty()) {
+			result.errors.append(
+				tr("Can't read Krita preset '%1'").arg(presetPath));
+			continue;
+		}
+
+		KritaBrushPreset kp = readKritaPreset(result, zr, presetPath, presetData);
+		if(kp.name.isEmpty()) {
+			continue;
+		}
+
+		QString tagName = bundleName;
+		if(d->readTagCountByName(bundleName) != 0) {
+			for(int j = 1; j < 100; ++j) {
+				QString candidate = QStringLiteral("%1 (%2)").arg(bundleName).arg(j);
+				if(d->readTagCountByName(candidate) == 0) {
+					tagName = candidate;
+					break;
+				}
+			}
+		}
+
+		int tagId = d->createTag(tagName);
+		if(tagId < 1) {
+			result.errors.append(
+				tr("Could not create tag '%1'.").arg(tagName));
+			break;
+		}
+		result.importedTags.append({tagId, tagName});
+
+		QString presetName = kp.name.isEmpty()
+			? QStringLiteral("Krita Brush %1").arg(imported + 1)
+			: kp.name;
+
+		QByteArray thumbnailBytes;
+		if(!kp.thumbnailData.isEmpty()) {
+			QPixmap thumb;
+			thumb.loadFromData(kp.thumbnailData);
+			thumbnailBytes = LazyThumbnail::toPng(thumb);
+		}
+
+		QString brushType;
+		QByteArray brushData;
+		if(kp.useClassic && !kp.classicSettings.isEmpty()) {
+			QJsonObject classicJson;
+			classicJson[QStringLiteral("drawpile_classic_settings")] =
+				kp.classicSettings;
+			brushType = QStringLiteral("classic");
+			brushData = QJsonDocument(classicJson).toJson();
+		} else {
+			brushType = QStringLiteral("mypaint");
+			brushData = QJsonDocument(kp.mypaintSettings).toJson();
+		}
+
+		int presetId = d->createPreset(
+			int(PresetState::Normal), presetName,
+			kp.description, thumbnailBytes,
+			brushType, brushData);
+		if(presetId < 1) {
+			result.errors.append(
+				tr("Could not create brush preset '%1'.").arg(presetName));
+			continue;
+		}
+
+		if(!d->createPresetTag(presetId, tagId)) {
+			result.errors.append(
+				tr("Could not assign brush '%1' to tag '%2'.")
+					.arg(presetName).arg(tagName));
+		}
+
+		++imported;
+	}
+	d->refreshTagCache();
+	d->refreshPresetCache();
+	endResetModel();
+
+	result.importedBrushCount = imported;
+	return result;
+}
+
+KritaBrushPreset BrushPresetTagModel::readKritaPreset(
+	BrushImportResult &result, const drawdance::ZipReader &zr,
+	const QString &presetPath, const QByteArray &presetData)
+{
+	KritaBrushPreset kp;
+
+	QDomDocument doc;
+	QString errorMsg;
+	int errorLine, errorCol;
+	if(!doc.setContent(presetData, &errorMsg, &errorLine, &errorCol)) {
+		qWarning("Error parsing Krita preset '%s': %s at line %d, col %d",
+			qUtf8Printable(presetPath), qUtf8Printable(errorMsg),
+			errorLine, errorCol);
+		result.errors.append(
+			tr("Cannot parse Krita preset '%1'").arg(presetPath));
+		return kp;
+	}
+
+	QDomElement root = doc.documentElement();
+	if(root.tagName() != QStringLiteral("brush")) {
+		result.errors.append(
+			tr("Invalid Krita preset '%1': missing <brush> root").arg(presetPath));
+		return kp;
+	}
+
+	kp.name = root.firstChildElement(QStringLiteral("name")).text();
+	if(kp.name.isEmpty()) {
+		kp.name = root.attribute(QStringLiteral("id"));
+	}
+	if(kp.name.isEmpty()) {
+		kp.name = QFileInfo(presetPath).baseName();
+	}
+
+	kp.description = root.firstChildElement(QStringLiteral("comment")).text();
+	if(kp.description.isEmpty()) {
+		kp.description = root.firstChildElement(QStringLiteral("description")).text();
+	}
+
+	kp.engine = root.firstChildElement(QStringLiteral("engine")).text();
+
+	QDomElement settingsElem = root.firstChildElement(QStringLiteral("settings"));
+	if(!settingsElem.isNull()) {
+		kp.mypaintSettings = kritaEngineToMyPaintSettings(kp.engine, doc);
+		kp.classicSettings = KritaBrushConverter::presetToClassicSettings(doc, kp.engine);
+		kp.useClassic = KritaBrushConverter::shouldUseClassic(kp.engine, doc);
+	}
+
+	kp.thumbnailData = extractKritaThumbnail(doc, zr, presetPath);
+
+	return kp;
+}
+
+QJsonObject BrushPresetTagModel::kritaEngineToMyPaintSettings(
+	const QString &engine, const QDomDocument &doc)
+{
+	QJsonObject settings;
+
+	auto addSetting = [&settings](const QString &key, double value) {
+		settings[key] = QJsonObject({
+			{QStringLiteral("base_value"), value},
+			{QStringLiteral("inputs"), QJsonObject()},
+		});
+	};
+
+	addSetting(QStringLiteral("size"), 16.0);
+	addSetting(QStringLiteral("opacity"), 1.0);
+	addSetting(QStringLiteral("color_h"), 0.0);
+	addSetting(QStringLiteral("color_s"), 0.0);
+	addSetting(QStringLiteral("color_v"), 1.0);
+
+	if(engine.contains(QStringLiteral("pixel"), Qt::CaseInsensitive)) {
+		addSetting(QStringLiteral("speed1"), 1.0);
+		addSetting(QStringLiteral("acceleration"), 0.0);
+		addSetting(QStringLiteral("direction"), 0.0);
+		addSetting(QStringLiteral("fuzzy_snap"), 0.0);
+	} else if(engine.contains(QStringLiteral("sketch"), Qt::CaseInsensitive)) {
+		addSetting(QStringLiteral("size"), 8.0);
+		addSetting(QStringLiteral("opacity"), 0.8);
+		addSetting(QStringLiteral("speed1"), 0.5);
+		addSetting(QStringLiteral("acceleration"), 0.0);
+	} else if(engine.contains(QStringLiteral("color"), Qt::CaseInsensitive)) {
+		addSetting(QStringLiteral("size"), 20.0);
+		addSetting(QStringLiteral("opacity"), 0.6);
+		addSetting(QStringLiteral("color_h"), 0.5);
+		addSetting(QStringLiteral("color_s"), 0.8);
+		addSetting(QStringLiteral("color_v"), 0.9);
+	} else if(engine.contains(QStringLiteral("smudge"), Qt::CaseInsensitive)) {
+		addSetting(QStringLiteral("size"), 24.0);
+		addSetting(QStringLiteral("opacity"), 0.5);
+		addSetting(QStringLiteral("speed1"), 0.3);
+		addSetting(QStringLiteral("acceleration"), 0.0);
+	}
+
+	QDomElement settingsElem = doc.documentElement().firstChildElement(
+		QStringLiteral("settings"));
+	if(!settingsElem.isNull()) {
+		QDomNodeList settingNodes = settingsElem.childNodes();
+		for(int i = 0; i < settingNodes.size(); ++i) {
+			QDomElement settingElem = settingNodes.at(i).toElement();
+			if(settingElem.isNull()) {
+				continue;
+			}
+			QString id = settingElem.attribute(QStringLiteral("id"));
+			QString valueStr = settingElem.text().trimmed();
+			if(id.isEmpty() || valueStr.isEmpty()) {
+				continue;
+			}
+			bool ok = false;
+			double value = valueStr.toDouble(&ok);
+			if(!ok) {
+				continue;
+			}
+
+			QString mypaintKey;
+			if(id == QStringLiteral("brush_size") || id == QStringLiteral("size")) {
+				mypaintKey = QStringLiteral("size");
+			} else if(id == QStringLiteral("brush_opacity") || id == QStringLiteral("opacity")) {
+				mypaintKey = QStringLiteral("opacity");
+			} else if(id.contains(QStringLiteral("hue"), Qt::CaseInsensitive)) {
+				mypaintKey = QStringLiteral("color_h");
+			} else if(id.contains(QStringLiteral("saturation"), Qt::CaseInsensitive)) {
+				mypaintKey = QStringLiteral("color_s");
+			} else if(id.contains(QStringLiteral("value"), Qt::CaseInsensitive)) {
+				mypaintKey = QStringLiteral("color_v");
+			} else if(id.contains(QStringLiteral("speed"), Qt::CaseInsensitive)) {
+				mypaintKey = QStringLiteral("speed1");
+			}
+
+			if(!mypaintKey.isEmpty()) {
+				settings[mypaintKey] = QJsonObject({
+					{QStringLiteral("base_value"), value},
+					{QStringLiteral("inputs"), QJsonObject()},
+				});
+			}
+		}
+	}
+
+	settings[QStringLiteral("version")] = 3;
+	return settings;
+}
+
+QByteArray BrushPresetTagModel::extractKritaThumbnail(
+	const QDomDocument &doc, const drawdance::ZipReader &zr,
+	const QString &presetPath)
+{
+	QDomElement previewElem =
+		doc.documentElement().firstChildElement(QStringLiteral("preview"));
+	if(previewElem.isNull()) {
+		return QByteArray();
+	}
+
+	QString previewPath = previewElem.text().trimmed();
+	if(previewPath.isEmpty()) {
+		previewPath = previewElem.attribute(QStringLiteral("file"));
+	}
+	if(previewPath.isEmpty()) {
+		return QByteArray();
+	}
+
+	QFileInfo info{presetPath};
+	QString baseDir = info.path();
+	if(!previewPath.startsWith(QLatin1Char('/')) && !baseDir.isEmpty()) {
+		previewPath = baseDir + QLatin1String("/") + previewPath;
+	}
+
+	drawdance::ZipReader::File previewFile = zr.readFile(previewPath);
+	if(previewFile.isNull()) {
+		return QByteArray();
+	}
+
+	return previewFile.readBytes();
+}
+
+QJsonArray KritaBrushConverter::kritaCurveToJson(
+	const QDomElement &curveElem)
+{
+	QJsonArray points;
+	QDomNodeList pointNodes = curveElem.elementsByTagName(
+		QStringLiteral("point"));
+	for(int i = 0; i < pointNodes.size(); ++i) {
+		QDomElement pointElem = pointNodes.at(i).toElement();
+		if(pointElem.isNull()) {
+			continue;
+		}
+		bool xOk = false, yOk = false;
+		double x = pointElem.attribute(QStringLiteral("x")).toDouble(&xOk);
+		double y = pointElem.attribute(QStringLiteral("y")).toDouble(&yOk);
+		if(xOk && yOk) {
+			points.append(QJsonArray({x, y}));
+		}
+	}
+	return points;
+}
+
+KisCubicCurve KritaBrushConverter::kritaCurveToCubicCurve(
+	const QDomElement &curveElem)
+{
+	KisCubicCurve curve;
+	QJsonArray points = kritaCurveToJson(curveElem);
+	if(points.isEmpty()) {
+		return curve;
+	}
+
+	QVector<float> values;
+	for(const QJsonValue &v : points) {
+		QJsonArray pt = v.toArray();
+		if(pt.size() >= 2) {
+			values.append(static_cast<float>(pt[1].toDouble()));
+		}
+	}
+
+	if(values.isEmpty()) {
+		return curve;
+	}
+
+	int count = qMin(values.size(), DP_CLASSIC_BRUSH_CURVE_VALUE_COUNT);
+	float arr[DP_CLASSIC_BRUSH_CURVE_VALUE_COUNT] = {0};
+	for(int i = 0; i < count; ++i) {
+		arr[i] = values[i];
+	}
+	curve.transferIntoFloat(arr, count);
+	return curve;
+}
+
+QJsonObject KritaBrushConverter::presetToClassicSettings(
+	const QDomDocument &doc, const QString &engine)
+{
+	QJsonObject settings;
+
+	settings[QStringLiteral("shape")] = QStringLiteral("round-soft");
+	settings[QStringLiteral("size")] = 16.0;
+	settings[QStringLiteral("opacity")] = 1.0;
+	settings[QStringLiteral("hard")] = 0.0;
+	settings[QStringLiteral("spacing")] = 10.0;
+	settings[QStringLiteral("smudge")] = 0.0;
+	settings[QStringLiteral("jitter")] = 0.0;
+	settings[QStringLiteral("resmudge")] = 0;
+	settings[QStringLiteral("smudgealpha")] = true;
+	settings[QStringLiteral("paintmode")] = QStringLiteral("direct");
+	settings[QStringLiteral("indirect")] = false;
+	settings[QStringLiteral("colorpick")] = false;
+	settings[QStringLiteral("erase")] = false;
+	settings[QStringLiteral("pixelperfect")] = false;
+	settings[QStringLiteral("pixelartinput")] = false;
+	settings[QStringLiteral("stabilizationmode")] = 0;
+	settings[QStringLiteral("stabilizer")] = 0;
+	settings[QStringLiteral("smoothing")] = 0;
+	settings[QStringLiteral("syncsamples")] = false;
+	settings[QStringLiteral("confidential")] = false;
+	settings[QStringLiteral("blend")] = QStringLiteral("normal");
+	settings[QStringLiteral("blendalpha")] = false;
+	settings[QStringLiteral("blenderase")] = QStringLiteral("erase");
+	settings[QStringLiteral("blenderasealpha")] = false;
+
+	QDomElement root = doc.documentElement();
+	QDomElement settingsElem = root.firstChildElement(
+		QStringLiteral("settings"));
+
+	if(!settingsElem.isNull()) {
+		QDomNodeList settingNodes = settingsElem.childNodes();
+		for(int i = 0; i < settingNodes.size(); ++i) {
+			QDomElement settingElem = settingNodes.at(i).toElement();
+			if(settingElem.isNull()) {
+				continue;
+			}
+			QString id = settingElem.attribute(QStringLiteral("id"));
+			QString valueStr = settingElem.text().trimmed();
+			if(id.isEmpty() || valueStr.isEmpty()) {
+				continue;
+			}
+
+			bool ok = false;
+			double value = valueStr.toDouble(&ok);
+			if(!ok) {
+				continue;
+			}
+
+			if(id == QStringLiteral("brush_size") || id == QStringLiteral("size")) {
+				settings[QStringLiteral("size")] = value;
+			} else if(id == QStringLiteral("brush_opacity") ||
+			          id == QStringLiteral("opacity")) {
+				settings[QStringLiteral("opacity")] = value;
+			} else if(id == QStringLiteral("brush_hardness") ||
+			          id == QStringLiteral("hardness")) {
+				settings[QStringLiteral("hard")] = value;
+			} else if(id == QStringLiteral("brush_spacing") ||
+			          id == QStringLiteral("spacing")) {
+				settings[QStringLiteral("spacing")] = value;
+			} else if(id.contains(QStringLiteral("smudge"),
+			          Qt::CaseInsensitive)) {
+				settings[QStringLiteral("smudge")] = value;
+			} else if(id.contains(QStringLiteral("jitter"),
+			          Qt::CaseInsensitive)) {
+				settings[QStringLiteral("jitter")] = value;
+			}
+
+			QDomElement curveElem = settingElem.firstChildElement(
+				QStringLiteral("curve"));
+			if(!curveElem.isNull()) {
+				QString curveKey = id + QStringLiteral("curve");
+				KisCubicCurve c = kritaCurveToCubicCurve(curveElem);
+				settings[curveKey] = c.toString();
+			}
+		}
+	}
+
+	if(engine.contains(QStringLiteral("pixel"), Qt::CaseInsensitive)) {
+		settings[QStringLiteral("shape")] =
+			QStringLiteral("round-pixel");
+	} else if(engine.contains(QStringLiteral("sketch"), Qt::CaseInsensitive)) {
+		settings[QStringLiteral("shape")] = QStringLiteral("round-soft");
+		settings[QStringLiteral("jitter")] = 15.0;
+		settings[QStringLiteral("size")] = qMin(
+			settings[QStringLiteral("size")].toDouble(), 12.0);
+	} else if(engine.contains(QStringLiteral("smudge"),
+	          Qt::CaseInsensitive)) {
+		settings[QStringLiteral("smudge")] = qMax(
+			settings[QStringLiteral("smudge")].toDouble(), 0.5);
+		settings[QStringLiteral("shape")] =
+			QStringLiteral("round-soft");
+	}
+
+	return settings;
+}
+
+bool KritaBrushConverter::shouldUseClassic(
+	const QString &engine, const QDomDocument &doc)
+{
+	if(engine.contains(QStringLiteral("pixel"), Qt::CaseInsensitive)) {
+		return true;
+	}
+	if(engine.contains(QStringLiteral("sketch"), Qt::CaseInsensitive)) {
+		return true;
+	}
+	if(engine.contains(QStringLiteral("smudge"), Qt::CaseInsensitive)) {
+		return true;
+	}
+	if(engine.contains(QStringLiteral("color"), Qt::CaseInsensitive)) {
+		return false;
+	}
+	if(engine.contains(QStringLiteral("watercolor"),
+	          Qt::CaseInsensitive)) {
+		return false;
+	}
+	if(engine.contains(QStringLiteral("marker"), Qt::CaseInsensitive)) {
+		return false;
+	}
+
+	QDomElement root = doc.documentElement();
+	QDomElement settingsElem = root.firstChildElement(
+		QStringLiteral("settings"));
+	if(!settingsElem.isNull()) {
+		int settingCount = 0;
+		QDomNodeList settingNodes = settingsElem.childNodes();
+		for(int i = 0; i < settingNodes.size(); ++i) {
+			if(!settingNodes.at(i).toElement().isNull()) {
+				++settingCount;
+			}
+		}
+		return settingCount <= 8;
+	}
+
+	return true;
 }
 
 namespace {

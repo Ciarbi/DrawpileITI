@@ -5,6 +5,7 @@
 #include "libclient/brushes/lazybrush.h"
 #include "libclient/brushes/lazythumbnail.h"
 #include <QAbstractItemModel>
+#include <QDomDocument>
 #include <QJsonValue>
 #include <QKeySequence>
 #include <QPixmap>
@@ -126,6 +127,36 @@ struct BrushExportResult {
 	int exportedBrushCount;
 };
 
+enum class BundleFormat {
+	Unknown,
+	Drawpile,
+	Krita,
+};
+
+struct KritaBrushPreset {
+	QString name;
+	QString description;
+	QString engine;
+	QByteArray thumbnailData;
+	QJsonObject mypaintSettings;
+	QJsonObject classicSettings;
+	bool useClassic = false;
+};
+
+class KritaBrushConverter {
+public:
+	static QJsonObject presetToClassicSettings(
+		const QDomDocument &doc, const QString &engine);
+
+	static bool shouldUseClassic(const QString &engine,
+		const QDomDocument &doc);
+
+	static QJsonArray kritaCurveToJson(const QDomElement &curveElem);
+
+	static KisCubicCurve kritaCurveToCubicCurve(
+		const QDomElement &curveElem);
+};
+
 struct BrushExportTag {
 	QString name;
 	QVector<int> presetIds;
@@ -170,6 +201,12 @@ public:
 	bool setStateInt(const QString &key, int value);
 
 	BrushImportResult importBrushPack(const QString &file);
+
+	BrushImportResult importDrawpileBrushPack(const QString &file);
+
+	static BundleFormat detectBundleFormat(const QString &file);
+
+	BrushImportResult importKritaBundle(const QString &file);
 
 	BrushExportResult exportBrushPack(
 		const QString &file, const QVector<BrushExportTag> &exportTags) const;
@@ -221,6 +258,17 @@ private:
 
 	static double scaleOldColorHue(double y);
 	static double scaleOldColorSaturationOrValue(double y);
+
+	static KritaBrushPreset readKritaPreset(
+		BrushImportResult &result, const drawdance::ZipReader &zr,
+		const QString &presetPath, const QByteArray &presetData);
+
+	static QJsonObject kritaEngineToMyPaintSettings(
+		const QString &engine, const QDomDocument &doc);
+
+	static QByteArray extractKritaThumbnail(
+		const QDomDocument &doc, const drawdance::ZipReader &zr,
+		const QString &basePath);
 
 	void exportTag(
 		BrushExportResult &result, QStringList &order, QSet<QString> &tagPaths,
