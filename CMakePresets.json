@@ -26,6 +26,26 @@
             "name": "linux-debug-qt5-all-make"
         },
         {
+            "binaryDir": "build/linux-debug-qt5-client-make",
+            "cacheVariables": {
+                "BUILTINSERVER": "ON",
+                "CLANG_TIDY": "OFF",
+                "CLIENT": "ON",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "QT_VERSION": "5",
+                "SERVER": "OFF",
+                "SERVERGUI": "OFF",
+                "TESTS": "OFF",
+                "TOOLS": "OFF",
+                "UPDATE_TRANSLATIONS": "OFF",
+                "USE_GENERATORS": "OFF"
+            },
+            "displayName": "Linux, debug build, Qt5, only client, make",
+            "generator": "Unix Makefiles",
+            "name": "linux-debug-qt5-client-make"
+        },
+        {
             "binaryDir": "build/linux-debug-qt5-all-ninja",
             "cacheVariables": {
                 "BUILTINSERVER": "ON",
@@ -41,9 +61,9 @@
                 "UPDATE_TRANSLATIONS": "OFF",
                 "USE_GENERATORS": "OFF"
             },
-            "displayName": "Linux, debug build, Qt5, only client, make",
-            "generator": "Unix Makefiles",
-            "name": "linux-debug-qt5-client-make"
+            "displayName": "Linux, debug build, Qt5, all components, ninja",
+            "generator": "Ninja",
+            "name": "linux-debug-qt5-all-ninja"
         },
         {
             "binaryDir": "build/linux-debug-qt5-client-ninja",
@@ -478,7 +498,7 @@
             "name": "linux-release-qt6-client-make"
         },
         {
-            "binaryDir": "build",
+            "binaryDir": "build/linux-release-qt6-client-ninja",
             "cacheVariables": {
                 "ADDRESS_SANITIZER": "OFF",
                 "BUILTINSERVER": "ON",

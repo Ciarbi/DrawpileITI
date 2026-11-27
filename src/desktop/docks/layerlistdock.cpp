@@ -316,6 +316,11 @@ void LayerList::setCanvas(canvas::CanvasModel *canvas)
 	m_canvas = canvas;
 
 	// Set up proxy model for layer color filtering
+	if(m_layerProxyModel) {
+		m_view->setModel(nullptr);
+		delete m_layerProxyModel;
+		m_layerProxyModel = nullptr;
+	}
 	m_layerProxyModel = new QSortFilterProxyModel(this);
 	m_layerProxyModel->setSourceModel(canvas->layerlist());
 	m_layerProxyModel->setFilterRole(canvas::LayerListModel::ColorRole);
@@ -760,18 +765,22 @@ void LayerList::selectLayer(int id)
 {
 	disableAutoselectAny();
 	QModelIndex sourceIndex = m_canvas->layerlist()->layerIndex(id);
-	if (sourceIndex.isValid() && m_layerProxyModel) {
+	if(sourceIndex.isValid() && m_layerProxyModel) {
 		QModelIndex proxyIndex = m_layerProxyModel->mapFromSource(sourceIndex);
-		selectLayerIndex(proxyIndex, true);
+		if(proxyIndex.isValid()) {
+			selectLayerIndex(proxyIndex, true);
+		}
 	}
 }
 
 void LayerList::autoSelectLayer(int id)
 {
 	QModelIndex sourceIndex = m_canvas->layerlist()->layerIndex(id);
-	if (sourceIndex.isValid() && m_layerProxyModel) {
+	if(sourceIndex.isValid() && m_layerProxyModel) {
 		QModelIndex proxyIndex = m_layerProxyModel->mapFromSource(sourceIndex);
-		selectLayerIndex(proxyIndex, true);
+		if(proxyIndex.isValid()) {
+			selectLayerIndex(proxyIndex, true);
+		}
 	}
 }
 
@@ -1092,16 +1101,41 @@ void LayerList::changeLayerAcl(
 
 void LayerList::selectLayerByColor(QAction *action)
 {
-	if(m_canvas) {
-		disableAutoselectAny();
-		QModelIndex proxyIndex = currentSelection();
-		QModelIndex sourceIndex = m_layerProxyModel ? m_layerProxyModel->mapToSource(proxyIndex) : proxyIndex;
-		QModelIndex nextSourceIndex = m_canvas->layerlist()->findNextColorLayer(
-			sourceIndex,
-			action->property("markercolor").value<QColor>());
-		if (nextSourceIndex.isValid() && m_layerProxyModel) {
-			QModelIndex nextProxyIndex = m_layerProxyModel->mapFromSource(nextSourceIndex);
-			selectLayerIndex(nextProxyIndex, true);
+	if(!m_canvas) {
+		return;
+	}
+	disableAutoselectAny();
+	QColor color = action->property("markercolor").value<QColor>();
+
+	QModelIndex sourceIndex = currentSelection();
+	if(m_layerProxyModel) {
+		sourceIndex = m_layerProxyModel->mapToSource(sourceIndex);
+	}
+	QModelIndex nextSourceIndex =
+		m_canvas->layerlist()->findNextColorLayer(sourceIndex, color);
+	QModelIndex nextProxyIndex = m_layerProxyModel
+									? m_layerProxyModel->mapFromSource(nextSourceIndex)
+									: nextSourceIndex;
+	if(nextProxyIndex.isValid()) {
+		selectLayerIndex(nextProxyIndex, true);
+		return;
+	}
+
+	// The next matching layer may be hidden by the color filter. Walk the
+	// visible rows instead, wrapping around like findNextColorLayer does.
+	if(m_layerProxyModel && m_layerColorFilter &&
+	   m_layerColorFilter->currentIndex() > 0) {
+		int rows = m_layerProxyModel->rowCount();
+		QModelIndex current = currentSelection();
+		int start = current.isValid() ? current.row() + 1 : 0;
+		for(int offset = 0; offset < rows; ++offset) {
+			QModelIndex index =
+				m_layerProxyModel->index((start + offset) % rows, 0);
+			if(index.data(canvas::LayerListModel::ColorRole).value<QColor>() ==
+			   color) {
+				selectLayerIndex(index, true);
+				return;
+			}
 		}
 	}
 }
@@ -2331,7 +2365,7 @@ void LayerList::updateUiFromCurrent()
 {
 	QModelIndex proxyIndex = currentSelection();
 	QModelIndex sourceIndex = m_layerProxyModel ? m_layerProxyModel->mapToSource(proxyIndex) : proxyIndex;
-	
+
 	const canvas::LayerListItem &layer =
 		sourceIndex.data().value<canvas::LayerListItem>();
 	m_currentId = layer.id;

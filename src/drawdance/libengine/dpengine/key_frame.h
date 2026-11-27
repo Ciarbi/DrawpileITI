@@ -42,8 +42,6 @@ const char *DP_key_frame_title(DP_KeyFrame *kf, size_t *out_length);
 
 int DP_key_frame_layer_id(DP_KeyFrame *kf);
 
-uint32_t DP_key_frame_color(DP_KeyFrame *kf);
-
 const DP_KeyFrameLayer *DP_key_frame_layers(DP_KeyFrame *kf, int *out_count);
 
 bool DP_key_frame_same_frame(DP_KeyFrame *kf_a, DP_KeyFrame *kf_b);
@@ -73,9 +71,6 @@ void DP_transient_key_frame_title_set(DP_TransientKeyFrame *tkf,
 
 void DP_transient_key_frame_layer_id_set(DP_TransientKeyFrame *tkf,
                                          int layer_id);
-
-void DP_transient_key_frame_color_set(DP_TransientKeyFrame *tkf,
-                                      uint32_t color);
 
 void DP_transient_key_frame_layer_set(DP_TransientKeyFrame *tkf,
                                       DP_KeyFrameLayer kfl, int index);

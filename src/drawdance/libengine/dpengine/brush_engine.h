@@ -153,17 +153,11 @@ void DP_brush_engine_classic_brush_set(DP_BrushEngine *be,
                                        bool eraser_override);
 
 void DP_brush_engine_mypaint_brush_set(DP_BrushEngine *be,
-                                        const DP_MyPaintBrush *brush,
-                                        const DP_MyPaintSettings *settings,
-                                        const DP_BrushEngineStrokeParams *besp,
-                                        const DP_UPixelFloat *color_override,
-                                        bool eraser_override);
-
-void DP_brush_engine_filter_brush_set(DP_BrushEngine *be,
-                                      uint8_t filter_type, uint8_t strength,
-                                      const DP_BrushEngineStrokeParams *besp,
-                                      const DP_UPixelFloat *color_override,
-                                      bool eraser_override);
+                                       const DP_MyPaintBrush *brush,
+                                       const DP_MyPaintSettings *settings,
+                                       const DP_BrushEngineStrokeParams *besp,
+                                       const DP_UPixelFloat *color_override,
+                                       bool eraser_override);
 
 void DP_brush_engine_dabs_flush(DP_BrushEngine *be);
 

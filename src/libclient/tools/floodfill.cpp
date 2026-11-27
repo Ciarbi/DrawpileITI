@@ -242,7 +242,7 @@ void FloodFill::setParameters(
 {
 	bool opacityChanged = opacity != m_opacity;
 	bool blendModeChanged = blendMode != m_blendMode;
-	bool textureImageChanged = textureImage != m_textureImage;
+	bool textureImageChanged = imagesDiffer(textureImage, m_textureImage);
 	bool needsTextureUpdate = textureSource != m_textureSource ||
 							  textureLayerId != m_textureLayerId ||
 							  textureImageChanged;
@@ -251,6 +251,10 @@ void FloodFill::setParameters(
 					   size != m_size || gap != m_gap || source != m_source ||
 					   area != m_area;
 	m_editableFills = editableFills;
+	if(needsTextureUpdate) {
+		m_textureFillCache = QImage();
+		m_cachedTextureImage = QImage();
+	}
 	m_textureSource = textureSource;
 	m_textureImage = textureImage;
 	m_textureLayerId = textureLayerId;
@@ -509,14 +513,21 @@ void FloodFill::adjustPendingImage(bool adjustColor, bool adjustOpacity,
 		QPainter painter(&m_pendingImage);
 		QRect rect = m_pendingImage.rect();
 		if(needsTextureApply) {
-			QImage textureFill(m_pendingImage.size(), QImage::Format_ARGB32_Premultiplied);
-			textureFill.fill(Qt::transparent);
-			QPixmap pixmap = QPixmap::fromImage(m_textureImage);
-			QPainter tmpPainter(&textureFill);
-			tmpPainter.setCompositionMode(QPainter::CompositionMode_Source);
-			tmpPainter.drawTiledPixmap(rect, pixmap);
+			QSize size = m_pendingImage.size();
+			if(m_textureFillCache.size() != size ||
+			   imagesDiffer(m_textureImage, m_cachedTextureImage)) {
+				m_cachedTextureImage = m_textureImage;
+				m_textureFillCache =
+					QImage(size, QImage::Format_ARGB32_Premultiplied);
+				m_textureFillCache.fill(Qt::transparent);
+				QPixmap pixmap = QPixmap::fromImage(m_textureImage);
+				QPainter tmpPainter(&m_textureFillCache);
+				tmpPainter.setCompositionMode(QPainter::CompositionMode_Source);
+				tmpPainter.drawTiledPixmap(
+					m_textureFillCache.rect(), pixmap);
+			}
 			painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
-			painter.drawImage(rect.topLeft(), textureFill);
+			painter.drawImage(rect.topLeft(), m_textureFillCache);
 		} else if(needsColorChange) {
 			painter.setCompositionMode(QPainter::CompositionMode_SourceAtop);
 			painter.fillRect(rect, color);

@@ -11,47 +11,47 @@ namespace tools {
 
 class FloodFill final : public Tool {
 public:
- 	enum class Source {
- 		Merged,
- 		MergedWithoutBackground,
- 		CurrentLayer,
- 		FillSourceLayer,
- 	};
+	enum class Source {
+		Merged,
+		MergedWithoutBackground,
+		CurrentLayer,
+		FillSourceLayer,
+	};
 
- 	enum class Area {
- 		Continuous,
- 		Similar,
- 		Selection,
- 	};
+	enum class Area {
+		Continuous,
+		Similar,
+		Selection,
+	};
 
- 	enum class FillTextureSource {
- 		SolidColor,
- 		Image,
- 		Layer,
- 	};
+	enum class FillTextureSource {
+		SolidColor,
+		Image,
+		Layer,
+	};
 
- 	FloodFill(ToolController &owner);
+	FloodFill(ToolController &owner);
 
- 	void begin(const BeginParams &params) override;
- 	void motion(const MotionParams &params) override;
- 	void end(const EndParams &params) override;
- 	bool isMultipart() const override;
- 	void finishMultipart() override;
- 	void undoMultipart() override;
- 	void cancelMultipart() override;
- 	void dispose() override;
- 	void flushPreviewedActions() override;
- 	bool usesBrushColor() const override { return true; }
- 	void setActiveLayer(int layerId) override;
- 	void setLayerAlphaLock(bool alphaLock) override;
- 	void setForegroundColor(const QColor &color) override;
+	void begin(const BeginParams &params) override;
+	void motion(const MotionParams &params) override;
+	void end(const EndParams &params) override;
+	bool isMultipart() const override;
+	void finishMultipart() override;
+	void undoMultipart() override;
+	void cancelMultipart() override;
+	void dispose() override;
+	void flushPreviewedActions() override;
+	bool usesBrushColor() const override { return true; }
+	void setActiveLayer(int layerId) override;
+	void setLayerAlphaLock(bool alphaLock) override;
+	void setForegroundColor(const QColor &color) override;
 
- 	void setParameters(
- 		int tolerance, int expansion, int kernel, int featherRadius, int size,
- 		qreal opacity, int gap, Source source, int blendMode, Area area,
- 		bool editableFills, bool confirmFills,
- 		FillTextureSource textureSource = FillTextureSource::SolidColor,
- 		const QImage &textureImage = QImage(), int textureLayerId = 0);
+	void setParameters(
+		int tolerance, int expansion, int kernel, int featherRadius, int size,
+		qreal opacity, int gap, Source source, int blendMode, Area area,
+		bool editableFills, bool confirmFills,
+		FillTextureSource textureSource = FillTextureSource::SolidColor,
+		const QImage &textureImage = QImage(), int textureLayerId = 0);
 
 private:
 	class Task;
@@ -82,6 +82,12 @@ private:
 
 	static bool blendModeHandlesColor(int blendMode);
 
+	static bool imagesDiffer(const QImage &a, const QImage &b)
+	{
+		return a.isNull() != b.isNull() ||
+			   (!a.isNull() && a.cacheKey() != b.cacheKey());
+	}
+
 	int m_tolerance = 0;
 	int m_expansion = 0;
 	int m_kernel;
@@ -95,6 +101,8 @@ private:
 	FillTextureSource m_textureSource = FillTextureSource::SolidColor;
 	QImage m_textureImage;
 	int m_textureLayerId = 0;
+	QImage m_cachedTextureImage;
+	QImage m_textureFillCache;
 	bool m_editableFills = false;
 	bool m_confirmFills = false;
 	bool m_running = false;

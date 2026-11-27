@@ -4,10 +4,9 @@
 
 #include <QCursor>
 #include <QHash>
-#include <QPair>
-#include <QPoint>
 #include <QPixmap>
 #include <QIcon>
+#include <QString>
 #include <QScreen>
 #include <QWindow>
 #include <QGuiApplication>
@@ -15,6 +14,30 @@
 #include <QGlobalStatic>
 
 namespace utils {
+
+struct CursorKey {
+	QString name;
+	int width;
+	int height;
+	int hotspotX;
+	int hotspotY;
+
+	bool operator==(const CursorKey &other) const
+	{
+		return width == other.width && height == other.height &&
+			   hotspotX == other.hotspotX && hotspotY == other.hotspotY &&
+			   name == other.name;
+	}
+};
+
+inline uint qHash(const CursorKey &key, uint seed = 0)
+{
+	seed = ::qHash(key.name, seed);
+	seed = ::qHash(key.width, seed);
+	seed = ::qHash(key.height, seed);
+	seed = ::qHash(key.hotspotX, seed);
+	return ::qHash(key.hotspotY, seed);
+}
 
 class BrushCursorCache {
 public:
@@ -27,7 +50,7 @@ public:
 private:
     QCursor loadImpl(const QString &cursorName, int hotspotX, int hotspotY, int width, int height);
 
-    QHash<QString, QPair<QPoint, QCursor>> m_cursorHash;
+    QHash<CursorKey, QCursor> m_cursorCache;
 };
 
 class BrushCursor {

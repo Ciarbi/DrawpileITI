@@ -10,6 +10,13 @@ on:
       # pointless to trigger yet another build in response to it.
       - continuous
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   CMAKE_COLOR_DIAGNOSTICS: ON
@@ -17,9 +24,27 @@ env:
   AS_VALIDATE_NONET: 1
 
 jobs:
+  translations:
+    name: Validate translations
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Validate translation files
+        # Advisory only: catches placeholder (%1..) mismatches between source
+        # and translations. Newly enabled, so it still reports pre-existing
+        # issues; make this blocking once the backlog is cleaned up.
+        continue-on-error: true
+        run: python3 cmake/validate-translations.py
+
   test:
     name: ${{ matrix.cross_os || matrix.os }}${{ matrix.android_sdk_versions && format('-{0}', matrix.android_sdk_versions) }} ${{ matrix.arch }}${{ matrix.component && format(' {0}', matrix.component) }} Qt ${{ matrix.qt }}${{ matrix.cross_os && format(' on {0}', matrix.os) }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      # post-sccache deletes the previous cache entry via the GitHub CLI.
+      actions: write
     strategy:
       fail-fast: false
       # We want to build the following:
@@ -435,6 +460,8 @@ jobs:
               cpack --verbose --config build/CPackConfig.cmake -C RelWithDebInfo
 
           - os: windows-2025
+            cross_os: ''
+            component: ''
             qt: 5.15.18
             arch: x86
             android_sdk_versions: ''
@@ -492,15 +519,19 @@ jobs:
           fetch-depth: 0 # for git-describe
           submodules: true
 
+      # The workspace root uses edition 2024, which requires Rust >= 1.85.
+      # Pin the toolchain instead of relying on whatever the runner has.
+      - name: Install Rust 1.85.1
+        uses: dtolnay/rust-toolchain@33280e014b87ec2afd73c872fdd38a9ebebf4df9
+
       - name: Activate MSVC
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
         with:
           arch: ${{ matrix.arch }}
         if: runner.os == 'Windows'
 
-      - name: Install NASM for building ffmpeg in macOS
-        run: |
-          brew install nasm
+      - name: Install NASM and YASM for building ffmpeg on macOS
+        run: brew install nasm yasm
         if: runner.os == 'macOS'
 
       - name: Install NASM for building OpenSSL and ffmpeg in Windows
@@ -508,11 +539,6 @@ jobs:
         with:
           platform: win${{ matrix.arch == 'x86_64' && '64' || '32' }}
         if: runner.os == 'Windows' && matrix.arch != 'arm64'
-
-      - name: Install YASM for building libvpx in macOS
-        run: |
-          brew install yasm
-        if: runner.os == 'macOS'
 
       - name: Install pkg-config for building and linking to ffmpeg in Windows
         run: |
@@ -605,7 +631,7 @@ jobs:
         id: deps
         with:
           build_type: ${{ matrix.build_type }}
-          cache_key: ${{ matrix.build_type != 'Release' && format('{0}-', matrix.build_type) || '' }}${{ runner.os }}-${{ matrix.arch }}
+          cache_key: ${{ matrix.build_type != 'Release' && format('{0}-', matrix.build_type) || '' }}${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('.github/scripts/**') }}
           path: .github/deps
           target_arch: "${{ matrix.arch }}"
           qt: ${{ matrix.qt }}
@@ -622,7 +648,7 @@ jobs:
         id: cross-deps
         with:
           build_type: ${{ matrix.build_type }}
-          cache_key: ${{ matrix.build_type != 'Release' && format('{0}-', matrix.build_type) || '' }}${{ runner.os }}+${{ matrix.cross_os }}${{ matrix.android_sdk_versions && format('-{0}', matrix.android_sdk_versions) }}-${{ matrix.arch }}
+          cache_key: ${{ matrix.build_type != 'Release' && format('{0}-', matrix.build_type) || '' }}${{ matrix.os }}+${{ matrix.cross_os }}${{ matrix.android_sdk_versions && format('-{0}', matrix.android_sdk_versions) }}-${{ matrix.arch }}-${{ hashFiles('.github/scripts/**') }}
           path: .github/cross-deps
           target_arch: "${{ matrix.arch }}"
           qt: ${{ matrix.qt }}
@@ -639,7 +665,7 @@ jobs:
         id: sccache
         with:
           triplet: ${{ matrix.sccache_triplet }}
-          cache_key: ${{ matrix.build_type != 'Release' && format('{0}-', matrix.build_type) || '' }}${{ runner.os }}${{ matrix.component }}-${{ matrix.arch }}${{ matrix.cross_os && format('+{0}', matrix.cross_os) }}${{ matrix.android_sdk_versions && format('-{0}', matrix.android_sdk_versions) }}-${{ matrix.qt }}
+          cache_key: ${{ matrix.build_type != 'Release' && format('{0}-', matrix.build_type) || '' }}${{ matrix.os }}${{ matrix.component }}-${{ matrix.arch }}${{ matrix.cross_os && format('+{0}', matrix.cross_os) }}${{ matrix.android_sdk_versions && format('-{0}', matrix.android_sdk_versions) }}-${{ matrix.qt }}-${{ hashFiles('.github/scripts/**') }}
 
       - name: Cache gradle
         uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf
@@ -676,6 +702,18 @@ jobs:
           "-DSEARCH_PATHS=${{ matrix.cross_os && format('{0};', steps.cross-deps.outputs.path) }}${{ steps.deps.outputs.path }}"
           -P ".github/scripts/edit-pe-metadata.cmake"
         if: runner.os == 'Windows' && matrix.packager && startsWith(github.ref, 'refs/tags/') && matrix.signpath
+
+      - name: Determine build parallelism
+        shell: bash
+        run: |
+          if command -v nproc >/dev/null 2>&1; then
+            jobs="$(nproc)"
+          elif command -v sysctl >/dev/null 2>&1; then
+            jobs="$(sysctl -n hw.ncpu)"
+          else
+            jobs="${NUMBER_OF_PROCESSORS:-2}"
+          fi
+          echo "BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
 
       - name: Generate project
         run: >
@@ -722,7 +760,7 @@ jobs:
         if: matrix.cross_os == 'Android' && matrix.packager
 
       - name: Build project
-        run: cmake --build build --parallel $(nproc || sysctl -n hw.ncpu || echo 2) --config ${{ matrix.build_type }}
+        run: cmake --build build --parallel ${{ env.BUILD_JOBS }} --config ${{ matrix.build_type }}
         env:
           RUSTC_WRAPPER: sccache
           SCCACHE_CACHE_SIZE: 200M
@@ -742,17 +780,9 @@ jobs:
         if: runner.os == 'Windows' && matrix.packager && startsWith(github.ref, 'refs/tags/') && matrix.signpath
 
       - name: Run C++ tests
-        run: ctest -C ${{ matrix.build_type }} --output-on-failure
+        run: ctest -C ${{ matrix.build_type }} --parallel ${{ env.BUILD_JOBS }} --output-on-failure
         working-directory: build
         if: '!matrix.cross_os'
-
-      - name: Validate translation files
-        # Advisory only: catches placeholder (%1..) mismatches between source
-        # and translations. Newly enabled, so it still reports pre-existing
-        # issues; make this blocking once the backlog is cleaned up.
-        continue-on-error: true
-        run: python3 cmake/validate-translations.py
-        shell: bash
 
       - name: Install WIX toolkit missing on ARM64 Windows runner
         run: |

@@ -255,8 +255,8 @@ void ChatBox::detachFromParent(int mode)
 		pinTip = tr("Disable overlay mode");
 	}
 
-	ChatWindow *window = new ChatWindow(this, windowFlags, windowParent, 
-		m_overlayMode ? 0.5 : 0.92);
+	ChatWindow *window = new ChatWindow(
+		this, windowFlags, windowParent, m_overlayMode ? 0.5 : 0.92);
 	connect(window, &ChatWindow::closing, this, &ChatBox::reattachToParent);
 	connect(oldParent, &QObject::destroyed, window, &QObject::deleteLater);
 

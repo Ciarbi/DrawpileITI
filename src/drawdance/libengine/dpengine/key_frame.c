@@ -5,6 +5,10 @@
 #include <dpcommon/common.h>
 #include <dpcommon/conversions.h>
 
+
+#define LAYER_VISIBILITY_MASK \
+    (DP_KEY_FRAME_LAYER_HIDDEN | DP_KEY_FRAME_LAYER_REVEALED)
+
 #ifdef DP_NO_STRICT_ALIASING
 
 struct DP_KeyFrame {
@@ -13,7 +17,6 @@ struct DP_KeyFrame {
     DP_Text *const title;
     const int layer_id;
     const int count;
-    const uint32_t color;
     const DP_KeyFrameLayer layers[];
 };
 
@@ -23,7 +26,6 @@ struct DP_TransientKeyFrame {
     DP_Text *title;
     int layer_id;
     int count;
-    uint32_t color;
     DP_KeyFrameLayer layers[];
 };
 
@@ -35,15 +37,11 @@ struct DP_KeyFrame {
     DP_Text *title;
     int layer_id;
     int count;
-    uint32_t color;
     DP_KeyFrameLayer layers[];
 };
 
 #endif
 
-
-#define LAYER_VISIBILITY_MASK \
-    (DP_KEY_FRAME_LAYER_HIDDEN | DP_KEY_FRAME_LAYER_REVEALED)
 
 bool DP_key_frame_layer_hidden(const DP_KeyFrameLayer *kfl)
 {
@@ -69,7 +67,6 @@ static void *allocate_key_frame(bool transient, int count)
     DP_atomic_set(&tkf->refcount, 1);
     tkf->transient = transient;
     tkf->count = count;
-    tkf->color = 0xFFFFFFFF; // Default white color
     return tkf;
 }
 
@@ -79,7 +76,6 @@ DP_KeyFrame *DP_key_frame_new_init(int layer_id)
     DP_TransientKeyFrame *tkf = allocate_key_frame(false, 0);
     tkf->layer_id = layer_id;
     tkf->title = NULL;
-    tkf->color = 0xFFFFFFFF; // Default white color
     return (DP_KeyFrame *)tkf;
 }
 
@@ -139,13 +135,6 @@ int DP_key_frame_layer_id(DP_KeyFrame *kf)
     DP_ASSERT(kf);
     DP_ASSERT(DP_atomic_get(&kf->refcount) > 0);
     return kf->layer_id;
-}
-
-uint32_t DP_key_frame_color(DP_KeyFrame *kf)
-{
-    DP_ASSERT(kf);
-    DP_ASSERT(DP_atomic_get(&kf->refcount) > 0);
-    return kf->color;
 }
 
 const DP_KeyFrameLayer *DP_key_frame_layers(DP_KeyFrame *kf, int *out_count)
@@ -208,7 +197,6 @@ DP_TransientKeyFrame *DP_transient_key_frame_new_with_layers(
     DP_TransientKeyFrame *tkf = allocate_key_frame(true, count);
     tkf->title = DP_text_incref_nullable(kf->title);
     tkf->layer_id = kf->layer_id;
-    tkf->color = kf->color;
     tkf->count = count;
     memcpy(tkf->layers, layers, sizeof(*layers) * DP_int_to_size(count));
     return tkf;
@@ -286,15 +274,6 @@ void DP_transient_key_frame_layer_id_set(DP_TransientKeyFrame *tkf,
     DP_ASSERT(DP_atomic_get(&tkf->refcount) > 0);
     DP_ASSERT(tkf->transient);
     tkf->layer_id = layer_id;
-}
-
-void DP_transient_key_frame_color_set(DP_TransientKeyFrame *tkf,
-                                      uint32_t color)
-{
-    DP_ASSERT(tkf);
-    DP_ASSERT(DP_atomic_get(&tkf->refcount) > 0);
-    DP_ASSERT(tkf->transient);
-    tkf->color = color;
 }
 
 void DP_transient_key_frame_layer_set(DP_TransientKeyFrame *tkf,

@@ -130,24 +130,42 @@ public:
 
 	const QString &path() const { return db.path(); }
 
+	drawdance::Database &database() { return db; }
+
 	BrushPresetModel *presetModel() const { return m_presetModel; }
 
-	int createTag(const QString &name)
+	int createTag(drawdance::Query &qry, const QString &name)
 	{
-		DRAWPILE_FS_PERSIST_SCOPE(scopedFsSync);
-		drawdance::Query query = db.query();
-		if(query.exec("insert into tag (name) values (?)", {name})) {
-			return query.lastInsertId();
+		if(qry.exec("insert into tag (name) values (?)", {name})) {
+			return qry.lastInsertId();
 		} else {
 			return 0;
 		}
 	}
 
+	int createTag(const QString &name)
+	{
+		DRAWPILE_FS_PERSIST_SCOPE(scopedFsSync);
+		drawdance::Query qry = db.query();
+		return createTag(qry, name);
+	}
+
 	int readTagCount() { return db.readInt("select count(*) from tag"); }
+
+	int readTagCountByName(drawdance::Query &qry, const QString &name)
+	{
+		const char *sql = "select count(*) from tag where name = ?";
+		if(qry.exec(sql, {name}) && qry.next()) {
+			return qry.columnInt(0);
+		} else {
+			return 0;
+		}
+	}
 
 	int readTagCountByName(const QString &name)
 	{
-		return db.readInt("select count(*) from tag where name = ?", 0, {name});
+		drawdance::Query qry = db.query();
+		return readTagCountByName(qry, name);
 	}
 
 	int readTagIdAtIndex(int index)
@@ -210,19 +228,28 @@ public:
 	}
 
 	int createPreset(
+		drawdance::Query &qry, int state, const QString &name,
+		const QString &description, const QByteArray &thumbnail,
+		const QString &type, const QByteArray &data)
+	{
+		const char *sql = "insert into preset (state, name, description, "
+						  "thumbnail, type, data) values (?, ?, ?, ?, ?, ?)";
+		if(qry.exec(sql, {state, name, description, thumbnail, type, data})) {
+			return qry.lastInsertId();
+		} else {
+			return 0;
+		}
+	}
+
+	int createPreset(
 		int state, const QString &name, const QString &description,
 		const QByteArray &thumbnail, const QString &type,
 		const QByteArray &data)
 	{
 		DRAWPILE_FS_PERSIST_SCOPE(scopedFsSync);
-		drawdance::Query query = db.query();
-		const char *sql = "insert into preset (state, name, description, "
-						  "thumbnail, type, data) values (?, ?, ?, ?, ?, ?)";
-		if(query.exec(sql, {state, name, description, thumbnail, type, data})) {
-			return query.lastInsertId();
-		} else {
-			return 0;
-		}
+		drawdance::Query qry = db.query();
+		return createPreset(
+			qry, state, name, description, thumbnail, type, data);
 	}
 
 	int readPresetCountAll()
@@ -565,13 +592,18 @@ public:
 		return tagAssignments;
 	}
 
+	bool createPresetTag(drawdance::Query &qry, int presetId, int tagId)
+	{
+		const char *sql =
+			"insert into preset_tag (preset_id, tag_id) values (?, ?)";
+		return qry.exec(sql, {presetId, tagId});
+	}
+
 	bool createPresetTag(int presetId, int tagId)
 	{
 		DRAWPILE_FS_PERSIST_SCOPE(scopedFsSync);
-		drawdance::Query query = db.query();
-		const char *sql =
-			"insert into preset_tag (preset_id, tag_id) values (?, ?)";
-		return query.exec(sql, {presetId, tagId});
+		drawdance::Query qry = db.query();
+		return createPresetTag(qry, presetId, tagId);
 	}
 
 	bool deletePresetTag(int presetId, int tagId)
@@ -1864,99 +1896,113 @@ BrushImportResult BrushPresetTagModel::importKritaBundle(
 	QDomNodeList presetNodes =
 		doc.elementsByTagName(QStringLiteral("brush"));
 
-	beginResetModel();
-	int imported = 0;
-	for(int i = 0; i < presetNodes.size(); ++i) {
-		QDomElement presetElem = presetNodes.at(i).toElement();
-		if(presetElem.isNull()) {
-			continue;
-		}
-
-		QString presetPath = presetElem.attribute(QStringLiteral("file"));
-		if(presetPath.isEmpty()) {
-			presetPath = QStringLiteral("presets/%1.kpp")
-				.arg(presetElem.attribute(QStringLiteral("id")));
-		}
-
-		QByteArray presetData =
-			zr.readFile(presetPath).readBytes();
-		if(presetData.isEmpty()) {
-			result.errors.append(
-				tr("Can't read Krita preset '%1'").arg(presetPath));
-			continue;
-		}
-
-		KritaBrushPreset kp = readKritaPreset(result, zr, presetPath, presetData);
-		if(kp.name.isEmpty()) {
-			continue;
-		}
-
-		QString tagName = bundleName;
-		if(d->readTagCountByName(bundleName) != 0) {
-			for(int j = 1; j < 100; ++j) {
-				QString candidate = QStringLiteral("%1 (%2)").arg(bundleName).arg(j);
-				if(d->readTagCountByName(candidate) == 0) {
-					tagName = candidate;
-					break;
-				}
+	QString tagName = bundleName;
+	if(d->readTagCountByName(tagName) != 0) {
+		for(int suffix = 1; suffix < 100; ++suffix) {
+			QString candidate =
+				QStringLiteral("%1 (%2)").arg(bundleName).arg(suffix);
+			if(d->readTagCountByName(candidate) == 0) {
+				tagName = candidate;
+				break;
 			}
 		}
+	}
+	if(d->readTagCountByName(tagName) != 0) {
+		result.errors.append(
+			tr("No free tag name for bundle '%1'.").arg(bundleName));
+		return result;
+	}
 
-		int tagId = d->createTag(tagName);
+	DRAWPILE_FS_PERSIST_SCOPE(scopedFsSync);
+	beginResetModel();
+	int imported = 0;
+	drawdance::Query qry = d->database().query();
+	bool ok = qry.tx([&]() {
+		int tagId = d->createTag(qry, tagName);
 		if(tagId < 1) {
 			result.errors.append(
 				tr("Could not create tag '%1'.").arg(tagName));
-			break;
+			return false;
 		}
 		result.importedTags.append({tagId, tagName});
 
-		QString presetName = kp.name.isEmpty()
-			? QStringLiteral("Krita Brush %1").arg(imported + 1)
-			: kp.name;
+		for(int i = 0; i < presetNodes.size(); ++i) {
+			QDomElement presetElem = presetNodes.at(i).toElement();
+			if(presetElem.isNull()) {
+				continue;
+			}
 
-		QByteArray thumbnailBytes;
-		if(!kp.thumbnailData.isEmpty()) {
-			QPixmap thumb;
-			thumb.loadFromData(kp.thumbnailData);
-			thumbnailBytes = LazyThumbnail::toPng(thumb);
+			QString presetPath = presetElem.attribute(QStringLiteral("file"));
+			if(presetPath.isEmpty()) {
+				presetPath = QStringLiteral("presets/%1.kpp")
+					.arg(presetElem.attribute(QStringLiteral("id")));
+			}
+
+			QByteArray presetData = zr.readFile(presetPath).readBytes();
+			if(presetData.isEmpty()) {
+				result.errors.append(
+					tr("Can't read Krita preset '%1'").arg(presetPath));
+				continue;
+			}
+
+			KritaBrushPreset kp =
+				readKritaPreset(result, zr, presetPath, presetData);
+			if(kp.name.isEmpty()) {
+				continue;
+			}
+
+			QByteArray thumbnailBytes;
+			if(!kp.thumbnailData.isEmpty()) {
+				QPixmap thumb;
+				thumb.loadFromData(kp.thumbnailData);
+				thumbnailBytes = LazyThumbnail::toPng(thumb);
+			}
+
+			QString brushType;
+			QByteArray brushData;
+			if(kp.useClassic && !kp.classicSettings.isEmpty()) {
+				QJsonObject classicJson;
+				classicJson[QStringLiteral("drawpile_classic_settings")] =
+					kp.classicSettings;
+				brushType = QStringLiteral("classic");
+				brushData = QJsonDocument(classicJson).toJson();
+			} else {
+				brushType = QStringLiteral("mypaint");
+				brushData = QJsonDocument(kp.mypaintSettings).toJson();
+			}
+
+			int presetId = d->createPreset(
+				qry, int(PresetState::Normal), kp.name, kp.description,
+				thumbnailBytes, brushType, brushData);
+			if(presetId < 1) {
+				result.errors.append(
+					tr("Could not create brush preset '%1'.").arg(kp.name));
+				continue;
+			}
+
+			if(!d->createPresetTag(qry, presetId, tagId)) {
+				result.errors.append(
+					tr("Could not assign brush '%1' to tag '%2'.")
+						.arg(kp.name).arg(tagName));
+				return false;
+			}
+
+			++imported;
 		}
-
-		QString brushType;
-		QByteArray brushData;
-		if(kp.useClassic && !kp.classicSettings.isEmpty()) {
-			QJsonObject classicJson;
-			classicJson[QStringLiteral("drawpile_classic_settings")] =
-				kp.classicSettings;
-			brushType = QStringLiteral("classic");
-			brushData = QJsonDocument(classicJson).toJson();
-		} else {
-			brushType = QStringLiteral("mypaint");
-			brushData = QJsonDocument(kp.mypaintSettings).toJson();
-		}
-
-		int presetId = d->createPreset(
-			int(PresetState::Normal), presetName,
-			kp.description, thumbnailBytes,
-			brushType, brushData);
-		if(presetId < 1) {
+		return imported > 0;
+	});
+	if(!ok) {
+		result.importedTags.clear();
+		if(result.errors.isEmpty()) {
 			result.errors.append(
-				tr("Could not create brush preset '%1'.").arg(presetName));
-			continue;
+				tr("Could not import Krita bundle '%1'.").arg(file));
 		}
-
-		if(!d->createPresetTag(presetId, tagId)) {
-			result.errors.append(
-				tr("Could not assign brush '%1' to tag '%2'.")
-					.arg(presetName).arg(tagName));
-		}
-
-		++imported;
 	}
 	d->refreshTagCache();
 	d->refreshPresetCache();
 	endResetModel();
 
-	result.importedBrushCount = imported;
+	result.importedBrushCount = ok ? imported : 0;
 	return result;
 }
 

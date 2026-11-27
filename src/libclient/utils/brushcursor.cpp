@@ -12,6 +12,7 @@ BrushCursorCache *BrushCursorCache::instance()
 
 BrushCursorCache::BrushCursorCache()
 {
+    m_cursorCache.reserve(16);
 }
 
 QCursor BrushCursorCache::loadImpl(const QString &cursorName, int hotspotX, int hotspotY, int width, int height)
@@ -46,12 +47,14 @@ QCursor BrushCursorCache::loadImpl(const QString &cursorName, int hotspotX, int 
 
 QCursor BrushCursorCache::load(const QString &cursorName, int width, int height, int hotspotX, int hotspotY)
 {
-    if (m_cursorHash.contains(cursorName)) {
-        return m_cursorHash[cursorName].second;
+    CursorKey key{cursorName, width, height, hotspotX, hotspotY};
+    auto it = m_cursorCache.constFind(key);
+    if (it != m_cursorCache.constEnd()) {
+        return it.value();
     }
 
     QCursor newCursor = loadImpl(cursorName, hotspotX, hotspotY, width, height);
-    m_cursorHash.insert(cursorName, QPair<QPoint, QCursor>(QPoint(hotspotX, hotspotY), newCursor));
+    m_cursorCache.insert(key, newCursor);
     return newCursor;
 }
 

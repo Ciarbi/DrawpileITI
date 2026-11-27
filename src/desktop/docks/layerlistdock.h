@@ -298,8 +298,8 @@ private:
 	widgets::GroupedToolButton *m_sketchButton;
 	widgets::GroupedToolButton *m_sketchTintButton;
 	QTreeView *m_view;
-	QSortFilterProxyModel *m_layerProxyModel;
-	QComboBox *m_layerColorFilter;
+	QSortFilterProxyModel *m_layerProxyModel = nullptr;
+	QComboBox *m_layerColorFilter = nullptr;
 
 	Actions m_actions;
 };

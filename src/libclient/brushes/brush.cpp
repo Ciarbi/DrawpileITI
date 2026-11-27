@@ -1703,8 +1703,10 @@ void ActiveBrush::setInBrushEngine(
 		be.setMyPaintBrush(
 			m_myPaint.constBrush(), m_myPaint.constSettings(), besp,
 			isEraserOverride());
-	} else if (m_activeType == FILTER) {
-		be.setFilterBrush(m_filterType, m_filterStrength, besp, isEraserOverride());
+	} else if(m_activeType == FILTER) {
+		// Filter brushes have no wire-format dab message yet. Fall back to a
+		// classic brush so strokes stay valid for the server and other clients.
+		be.setClassicBrush(m_classic, besp, isEraserOverride());
 	}
 }
 
