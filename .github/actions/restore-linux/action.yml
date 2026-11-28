@@ -8,7 +8,6 @@ inputs:
     description: Paths to cache
     default: |-
       /var/cache/apt/archives/*.deb
-      /var/lib/apt/lists/*_Packages
       .github/linuxdeploy-bin
     type: string
 
@@ -26,9 +25,15 @@ runs:
         path: ${{ inputs.path }}
         key: build-packages-${{ matrix.os }}
 
-    - name: Prepare system package manager
+    # Package lists must not be cached: they go stale when the runner image
+    # updates packages (e.g. libgstreamer1.0-0) while the cached lists still
+    # point to the old matching -dev package, causing apt dependency errors.
+    - name: Update package lists
+      run: sudo apt-get update
+      shell: bash
+
+    - name: Download linuxdeploy
       run: >
-        sudo apt-get clean && sudo apt-get update &&
         mkdir .github/linuxdeploy-bin &&
         pushd .github/linuxdeploy-bin >/dev/null &&
         curl -L --remote-name-all

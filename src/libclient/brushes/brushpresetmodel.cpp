@@ -111,6 +111,37 @@ struct PresetShortcut {
 	}
 };
 
+struct DomParseResult {
+	bool ok;
+	QString errorMessage;
+	int errorLine;
+	int errorColumn;
+};
+
+// Qt 6.8 deprecated all setContent overloads that take error output
+// parameters, so keep the version-specific parsing in one place.
+static DomParseResult
+parseDomXml(QDomDocument &doc, const QByteArray &xml, bool namespaceProcessing)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+	QDomDocument::ParseOptions options =
+		namespaceProcessing ? QDomDocument::ParseOption::UseNamespaceProcessing
+							: QDomDocument::ParseOption::Default;
+	QDomDocument::ParseResult result = doc.setContent(xml, options);
+	return {
+		static_cast<bool>(result), result.errorMessage,
+		static_cast<int>(result.errorLine),
+		static_cast<int>(result.errorColumn)};
+#else
+	QString errorMessage;
+	int errorLine = 0;
+	int errorColumn = 0;
+	bool ok = doc.setContent(
+		xml, namespaceProcessing, &errorMessage, &errorLine, &errorColumn);
+	return {ok, errorMessage, errorLine, errorColumn};
+#endif
+}
+
 using PresetShortcutMap = QHash<QKeySequence, PresetShortcut>;
 
 static const QString KRITA_MANIFEST_NAMESPACE = QStringLiteral(
@@ -598,7 +629,7 @@ static QDomDocument kritaPresetToLegacyDocument(
 		QDomDocument defDoc;
 		QString wrapped = QStringLiteral("<kritaBrushDefinition>%1</kritaBrushDefinition>")
 							  .arg(definition);
-		if(defDoc.setContent(wrapped, false, nullptr, nullptr, nullptr)) {
+		if(parseDomXml(defDoc, wrapped.toUtf8(), false).ok) {
 			QDomElement brush = defDoc.documentElement().firstChildElement(
 				QStringLiteral("Brush"));
 			if(!brush.isNull()) {
@@ -2602,9 +2633,7 @@ BrushPresetTagModel::detectBundleFormat(const QString &file)
 		zr.readFile(QStringLiteral("META-INF/manifest.xml")).readBytes();
 	if(!manifestData.isEmpty()) {
 		QDomDocument manifest;
-		QString errorMsg;
-		int errorLine, errorCol;
-		if(manifest.setContent(manifestData, true, &errorMsg, &errorLine, &errorCol) &&
+		if(parseDomXml(manifest, manifestData, true).ok &&
 		   hasKritaManifestEntry(manifest)) {
 			return BundleFormat::Krita;
 		}
@@ -2631,11 +2660,12 @@ BrushImportResult BrushPresetTagModel::importKritaBundle(
 
 	QByteArray bundleXml = zr.readFile(QStringLiteral("bundle.xml")).readBytes();
 	if(!bundleXml.isEmpty()) {
-		QString errorMsg;
-		int errorLine, errorCol;
-		if(!doc.setContent(bundleXml, &errorMsg, &errorLine, &errorCol)) {
-			qWarning("Error parsing bundle.xml: %s at line %d, col %d",
-				qUtf8Printable(errorMsg), errorLine, errorCol);
+		DomParseResult parsed = parseDomXml(doc, bundleXml, false);
+		if(!parsed.ok) {
+			qWarning(
+				"Error parsing bundle.xml: %s at line %d, col %d",
+				qUtf8Printable(parsed.errorMessage), parsed.errorLine,
+				parsed.errorColumn);
 			result.errors.append(
 				tr("Invalid Krita bundle: cannot parse bundle.xml"));
 			return result;
@@ -2679,12 +2709,12 @@ BrushImportResult BrushPresetTagModel::importKritaBundle(
 			return result;
 		}
 
-		QString errorMsg;
-		int errorLine, errorCol;
-		if(!doc.setContent(
-				   manifestData, true, &errorMsg, &errorLine, &errorCol)) {
-			qWarning("Error parsing manifest.xml: %s at line %d, col %d",
-				qUtf8Printable(errorMsg), errorLine, errorCol);
+		DomParseResult parsed = parseDomXml(doc, manifestData, true);
+		if(!parsed.ok) {
+			qWarning(
+				"Error parsing manifest.xml: %s at line %d, col %d",
+				qUtf8Printable(parsed.errorMessage), parsed.errorLine,
+				parsed.errorColumn);
 			result.errors.append(
 				tr("Invalid Krita bundle: cannot parse manifest.xml"));
 			return result;
@@ -2813,12 +2843,12 @@ KritaBrushPreset BrushPresetTagModel::readKritaPreset(
 	}
 
 	QDomDocument presetDoc;
-	QString errorMsg;
-	int errorLine, errorCol;
-	if(!presetDoc.setContent(presetXml, &errorMsg, &errorLine, &errorCol)) {
-		qWarning("Error parsing Krita preset '%s': %s at line %d, col %d",
-			qUtf8Printable(presetPath), qUtf8Printable(errorMsg),
-			errorLine, errorCol);
+	DomParseResult parsed = parseDomXml(presetDoc, presetXml, false);
+	if(!parsed.ok) {
+		qWarning(
+			"Error parsing Krita preset '%s': %s at line %d, col %d",
+			qUtf8Printable(presetPath), qUtf8Printable(parsed.errorMessage),
+			parsed.errorLine, parsed.errorColumn);
 		result.errors.append(
 			tr("Cannot parse Krita preset '%1'").arg(presetPath));
 		return kp;
