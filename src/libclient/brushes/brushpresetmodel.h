@@ -138,6 +138,7 @@ struct KritaBrushPreset {
 	QString description;
 	QString engine;
 	QByteArray thumbnailData;
+	QJsonObject brushJson;
 	QJsonObject mypaintSettings;
 	QJsonObject classicSettings;
 	bool useClassic = false;
@@ -146,6 +147,12 @@ struct KritaBrushPreset {
 class KritaBrushConverter {
 public:
 	static QJsonObject presetToClassicSettings(
+		const QDomDocument &doc, const QString &engine);
+
+	static QJsonObject presetToMyPaintMapping(
+		const QDomDocument &doc, const QString &engine);
+
+	static QJsonObject presetToActiveBrushJson(
 		const QDomDocument &doc, const QString &engine);
 
 	static bool shouldUseClassic(const QString &engine,
@@ -262,9 +269,6 @@ private:
 	static KritaBrushPreset readKritaPreset(
 		BrushImportResult &result, const drawdance::ZipReader &zr,
 		const QString &presetPath, const QByteArray &presetData);
-
-	static QJsonObject kritaEngineToMyPaintSettings(
-		const QString &engine, const QDomDocument &doc);
 
 	static QByteArray extractKritaThumbnail(
 		const QDomDocument &doc, const drawdance::ZipReader &zr,

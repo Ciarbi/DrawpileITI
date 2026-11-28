@@ -143,7 +143,7 @@ QStringList fileFormatFilterList(FileFormatOptions formats)
 	}
 
 	if(formats.testFlag(FileFormatOption::BrushPack)) {
-		filter << QGuiApplication::tr("Brush Pack (%1)").arg("*.zip");
+		filter << QGuiApplication::tr("Brush Pack (%1)").arg("*.zip *.bundle");
 	}
 
 	if(formats.testFlag(FileFormatOption::SessionBans)) {

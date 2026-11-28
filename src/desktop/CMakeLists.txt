@@ -323,6 +323,8 @@ target_sources(drawpile PRIVATE
 	scene/transformitem.h
 	scene/usermarkeritem.cpp
 	scene/usermarkeritem.h
+	scene/vectorshapeitem.cpp
+	scene/vectorshapeitem.h
 	toolwidgets/annotationsettings.cpp
 	toolwidgets/annotationsettings.h
 	toolwidgets/brushsettings.cpp

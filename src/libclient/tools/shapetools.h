@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef LIBCLIENT_TOOLS_SHAPETOOLS_H
 #define LIBCLIENT_TOOLS_SHAPETOOLS_H
-#include "libclient/drawdance/brushengine.h"
 #include "libclient/tools/tool.h"
+#include "libclient/tools/vectorshape.h"
 #include <QRectF>
 
 struct DP_MaskSync;
@@ -10,7 +10,11 @@ struct DP_MaskSync;
 namespace tools {
 
 /**
- * \brief Base class for tools that draw a shape (as opposed to freehand tools)
+ * \brief Base class for tools that create vector shapes
+ *
+ * Shapes are kept as a local overlay layer for the current document. They are
+ * not painted into the selected raster layer and are not sent over the
+ * network, since the protocol has no vector layer type.
  */
 class ShapeTool : public Tool {
 public:
@@ -20,8 +24,8 @@ public:
 			  Capability::AllowColorPick | Capability::Fractional |
 				  Capability::AllowToolAdjust1 | Capability::AllowToolAdjust2 |
 				  Capability::AllowToolAdjust3)
-		, m_brushEngine(ms)
 	{
+		Q_UNUSED(ms);
 	}
 
 	void begin(const BeginParams &params) final override;
@@ -36,9 +40,9 @@ public:
 	void setSelectionMaskingEnabled(bool selectionMaskingEnabled) override;
 
 protected:
-	virtual canvas::PointVector pointVector() const = 0;
+	//! Vector geometry of the shape.
+	virtual QPainterPath path() const = 0;
 	virtual QPointF getConstrainPoint() const;
-	void updatePreview();
 	QRectF rect() const { return QRectF(m_p1, m_p2).normalized(); }
 	qreal angle() const { return m_angle; }
 
@@ -46,79 +50,77 @@ protected:
 	bool m_drawing = false;
 
 private:
+	VectorShape vectorShape(int id) const;
+	void clearPreview();
+	void updatePreview();
 	void updateShape(bool constrain, bool center);
 
-	qreal m_zoom = 1.0;
 	qreal m_angle = 0.0;
-	bool m_mirror = false;
-	bool m_flip = false;
-	drawdance::BrushEngine m_brushEngine;
+	int m_sizeLimit = 0;
 };
 
 /**
  * \brief Line tool
  *
- * The line tool draws straight lines.
+ * The line tool creates a straight vector line.
  */
 class Line final : public ShapeTool {
 public:
 	Line(ToolController &owner, DP_MaskSync *ms);
 
 protected:
-	canvas::PointVector pointVector() const override;
+	QPainterPath path() const override;
 	QPointF getConstrainPoint() const override;
 };
 
 /**
  * \brief Rectangle drawing tool
  *
- * This tool is used for drawing squares and rectangles
+ * This tool creates vector squares and rectangles
  */
 class Rectangle final : public ShapeTool {
 public:
 	Rectangle(ToolController &owner, DP_MaskSync *ms);
 
 protected:
-	canvas::PointVector pointVector() const override;
+	QPainterPath path() const override;
 };
 
 /**
  * \brief Ellipse drawing tool
  *
- * This tool is used for drawing circles and ellipses
+ * This tool creates vector circles and ellipses
  */
 class Ellipse final : public ShapeTool {
 public:
 	Ellipse(ToolController &owner, DP_MaskSync *ms);
 
 protected:
-	canvas::PointVector pointVector() const override;
+	QPainterPath path() const override;
 };
 
 /**
  * \brief Triangle drawing tool
- *
- * This tool is used for drawing triangles
  */
 class Triangle final : public ShapeTool {
 public:
 	Triangle(ToolController &owner, DP_MaskSync *ms);
 
 protected:
-	canvas::PointVector pointVector() const override;
+	QPainterPath path() const override;
 };
 
 /**
  * \brief Diamond drawing tool
  *
- * This tool is used for drawing diamonds (rhombuses)
+ * This tool creates vector diamonds (rhombuses)
  */
 class Diamond final : public ShapeTool {
 public:
 	Diamond(ToolController &owner, DP_MaskSync *ms);
 
 protected:
-	canvas::PointVector pointVector() const override;
+	QPainterPath path() const override;
 };
 
 }

@@ -36,6 +36,7 @@ public:
 		TitleType = QGraphicsItem::UserType + 27,
 		LiquifyType = QGraphicsItem::UserType + 28,
 		PivotType = QGraphicsItem::UserType + 29,
+		VectorShapeType = QGraphicsItem::UserType + 30,
 	};
 
 	static constexpr qreal Z_USER_MARKER = 999.0;

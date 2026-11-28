@@ -397,6 +397,7 @@ void ToolController::setStabilizerUseBrushSampleCount(
 
 void ToolController::setModel(canvas::CanvasModel *model)
 {
+	clearVectorShapes();
 	m_model = model;
 	connect(
 		m_model, &canvas::CanvasModel::compatibilityModeChanged, this,
@@ -816,6 +817,72 @@ void ToolController::setBrushEngineBrush(
 	const brushes::ActiveBrush &brush =
 		fillBrushEngineStrokeParams(source, nullptr, 0.0, 0, stroke);
 	brush.setInBrushEngine(be, stroke);
+}
+
+int ToolController::addVectorShape(
+	const QPainterPath &path, const QColor &color, qreal width, bool fill)
+{
+	if(path.isEmpty()) {
+		return 0;
+	}
+
+	VectorShape shape;
+	shape.id = m_nextVectorShapeId++;
+	shape.path = path;
+	shape.color = color;
+	shape.width = qMax(qreal(1.0), width);
+	shape.fill = fill;
+	m_vectorShapes.append(shape);
+	m_redoVectorShapes.clear();
+	emit vectorShapeAdded(shape);
+	return shape.id;
+}
+
+bool ToolController::undoVectorShape()
+{
+	if(m_vectorShapes.isEmpty()) {
+		return false;
+	}
+
+	VectorShape shape = m_vectorShapes.takeLast();
+	m_redoVectorShapes.append(shape);
+	emit vectorShapeRemoved(shape.id);
+	return true;
+}
+
+bool ToolController::redoVectorShape()
+{
+	if(m_redoVectorShapes.isEmpty()) {
+		return false;
+	}
+
+	VectorShape shape = m_redoVectorShapes.takeLast();
+	m_vectorShapes.append(shape);
+	emit vectorShapeAdded(shape);
+	return true;
+}
+
+void ToolController::removeVectorShape(int id)
+{
+	for(int i = 0; i < m_vectorShapes.size(); ++i) {
+		if(m_vectorShapes[i].id == id) {
+			m_vectorShapes.removeAt(i);
+			m_redoVectorShapes.clear();
+			emit vectorShapeRemoved(id);
+			return;
+		}
+	}
+}
+
+void ToolController::clearVectorShapes()
+{
+	if(m_vectorShapes.isEmpty() && m_redoVectorShapes.isEmpty()) {
+		return;
+	}
+
+	m_vectorShapes.clear();
+	m_redoVectorShapes.clear();
+	emit vectorShapesCleared();
 }
 
 void ToolController::setStrokeWorkerBrush(

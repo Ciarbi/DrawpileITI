@@ -13,6 +13,7 @@
 #include "desktop/scene/selectionitem.h"
 #include "desktop/scene/transformitem.h"
 #include "desktop/scene/usermarkeritem.h"
+#include "desktop/scene/vectorshapeitem.h"
 #include "desktop/view/canvasscene.h"
 #include "libclient/canvas/canvasmodel.h"
 #include "libclient/canvas/layerlist.h"
@@ -37,6 +38,7 @@ CanvasScene::CanvasScene(QObject *parent)
 	, m_anchorLine(nullptr)
 	, m_maskPreview(nullptr)
 	, m_pathPreview(nullptr)
+	, m_vectorShapePreview(nullptr)
 	, m_selection(nullptr)
 	, m_transform(nullptr)
 	, m_pivot(nullptr)
@@ -120,6 +122,7 @@ void CanvasScene::initCanvas(canvas::CanvasModel *model)
 		m_model->transform(), &canvas::TransformModel::transformChanged, this,
 		&CanvasScene::onTransformChanged);
 
+	clearVectorShapes();
 	for(QGraphicsItem *item : m_group->childItems()) {
 		if(item->type() == AnnotationItem::Type ||
 		   item->type() == UserMarkerItem::Type ||
@@ -666,6 +669,47 @@ void CanvasScene::setPathPreview(const QPainterPath &path)
 	} else {
 		m_pathPreview = new PathPreviewItem(path, m_zoom, m_group);
 	}
+}
+
+void CanvasScene::setVectorShapePreview(const tools::VectorShape &shape)
+{
+	if(shape.path.isEmpty()) {
+		delete m_vectorShapePreview;
+		m_vectorShapePreview = nullptr;
+	} else if(m_vectorShapePreview) {
+		m_vectorShapePreview->setShape(shape);
+	} else {
+		m_vectorShapePreview = new VectorShapeItem(shape, m_group);
+	}
+}
+
+void CanvasScene::addVectorShape(const tools::VectorShape &shape)
+{
+	if(shape.id <= 0 || shape.path.isEmpty()) {
+		return;
+	}
+
+	VectorShapeItem *item = m_vectorShapes.value(shape.id);
+	if(item) {
+		item->setShape(shape);
+		return;
+	}
+
+	item = new VectorShapeItem(shape, m_group);
+	m_vectorShapes.insert(shape.id, item);
+}
+
+void CanvasScene::removeVectorShape(int id)
+{
+	delete m_vectorShapes.take(id);
+}
+
+void CanvasScene::clearVectorShapes()
+{
+	qDeleteAll(m_vectorShapes);
+	m_vectorShapes.clear();
+	delete m_vectorShapePreview;
+	m_vectorShapePreview = nullptr;
 }
 
 void CanvasScene::setOutline(qreal size, qreal width)

@@ -1769,9 +1769,15 @@ void Document::undo()
 		return;
 	// Only allow undos if the pen or mouse button is not down. If we're in a
 	// multipart drawing, e.g. with the bezier tool, we only undo the last part.
-	if(!m_toolctrl->isDrawing() && !m_toolctrl->undoMultipartDrawing() &&
-	   checkPermission(DP_FEATURE_UNDO)) {
-		m_toolctrl->undoRedo(false);
+	if(!m_toolctrl->isDrawing() && !m_toolctrl->undoMultipartDrawing()) {
+		// Local vector shapes are outside the protocol, so they are undone
+		// before falling back to the server-side undo stack.
+		if(m_toolctrl->undoVectorShape()) {
+			return;
+		}
+		if(checkPermission(DP_FEATURE_UNDO)) {
+			m_toolctrl->undoRedo(false);
+		}
 	}
 }
 
@@ -1781,9 +1787,13 @@ void Document::redo()
 		return;
 	// Only allow undos if the pen or mouse button is not down. If we're in a
 	// multipart drawing, e.g. with a transform, we only redo the last part.
-	if(!m_toolctrl->isDrawing() && !m_toolctrl->redoMultipartDrawing() &&
-	   checkPermission(DP_FEATURE_UNDO)) {
-		m_toolctrl->undoRedo(true);
+	if(!m_toolctrl->isDrawing() && !m_toolctrl->redoMultipartDrawing()) {
+		if(m_toolctrl->redoVectorShape()) {
+			return;
+		}
+		if(checkPermission(DP_FEATURE_UNDO)) {
+			m_toolctrl->undoRedo(true);
+		}
 	}
 }
 

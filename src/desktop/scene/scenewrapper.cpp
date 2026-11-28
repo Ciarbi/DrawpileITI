@@ -416,6 +416,21 @@ void SceneWrapper::connectDocument(Document *doc)
 		toolCtrl, &tools::ToolController::pathPreviewRequested, m_scene,
 		&CanvasScene::setPathPreview);
 	connect(
+		toolCtrl, &tools::ToolController::vectorShapePreviewRequested, m_scene,
+		&CanvasScene::setVectorShapePreview);
+	connect(
+		toolCtrl, &tools::ToolController::vectorShapeAdded, m_scene,
+		&CanvasScene::addVectorShape);
+	connect(
+		toolCtrl, &tools::ToolController::vectorShapeRemoved, m_scene,
+		&CanvasScene::removeVectorShape);
+	connect(
+		toolCtrl, &tools::ToolController::vectorShapesCleared, m_scene,
+		&CanvasScene::clearVectorShapes);
+	for(const tools::VectorShape &shape : toolCtrl->vectorShapes()) {
+		m_scene->addVectorShape(shape);
+	}
+	connect(
 		toolCtrl, &tools::ToolController::toolNoticeRequested, m_scene->hud(),
 		&HudHandler::setToolNotice, Qt::QueuedConnection);
 

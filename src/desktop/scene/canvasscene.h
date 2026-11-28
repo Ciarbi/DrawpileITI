@@ -11,6 +11,10 @@ namespace canvas {
 class CanvasModel;
 }
 
+namespace tools {
+struct VectorShape;
+}
+
 namespace drawdance {
 class AnnotationList;
 }
@@ -30,6 +34,7 @@ class PivotItem;
 class SelectionItem;
 class TransformItem;
 class UserMarkerItem;
+class VectorShapeItem;
 #ifdef HAVE_EMULATED_BITMAP_CURSOR
 class CursorItem;
 #endif
@@ -84,6 +89,10 @@ public:
 	void setAnchorLineActiveIndex(int activeIndex);
 	void setMaskPreview(const QPoint &pos, const QImage &mask);
 	void setPathPreview(const QPainterPath &path);
+	void setVectorShapePreview(const tools::VectorShape &shape);
+	void addVectorShape(const tools::VectorShape &shape);
+	void removeVectorShape(int id);
+	void clearVectorShapes();
 
 	void setOutline(qreal size, qreal width);
 	void setOutlineTransform(const QPointF &pos, qreal angle);
@@ -186,10 +195,12 @@ private:
 
 	//! User cursor items
 	QHash<uint8_t, UserMarkerItem *> m_usermarkers;
+	QHash<int, VectorShapeItem *> m_vectorShapes;
 
 	AnchorLineItem *m_anchorLine;
 	MaskPreviewItem *m_maskPreview;
 	PathPreviewItem *m_pathPreview;
+	VectorShapeItem *m_vectorShapePreview;
 	SelectionItem *m_selection;
 	TransformItem *m_transform;
 	PivotItem *m_pivot;

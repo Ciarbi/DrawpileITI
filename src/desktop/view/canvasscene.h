@@ -15,6 +15,10 @@ namespace canvas {
 class CanvasModel;
 }
 
+namespace tools {
+struct VectorShape;
+}
+
 namespace drawdance {
 class AnnotationList;
 class SelectionSet;
@@ -37,6 +41,7 @@ class PivotItem;
 class SelectionItem;
 class TransformItem;
 class UserMarkerItem;
+class VectorShapeItem;
 }
 
 namespace view {
@@ -63,6 +68,7 @@ class CanvasScene final : public QGraphicsScene, public HudScene {
 	using ToggleItem = drawingboard::ToggleItem;
 	using TransformItem = drawingboard::TransformItem;
 	using UserMarkerItem = drawingboard::UserMarkerItem;
+	using VectorShapeItem = drawingboard::VectorShapeItem;
 
 public:
 	explicit CanvasScene(bool software, QObject *parent = nullptr);
@@ -88,6 +94,10 @@ public:
 	void setAnchorLineActiveIndex(int activeIndex);
 	void setMaskPreview(const QPoint &pos, const QImage &mask);
 	void setPathPreview(const QPainterPath &path);
+	void setVectorShapePreview(const tools::VectorShape &shape);
+	void addVectorShape(const tools::VectorShape &shape);
+	void removeVectorShape(int id);
+	void clearVectorShapes();
 
 	bool isCursorOnCanvas() const { return m_cursorOnCanvas; }
 	void setCursorOnCanvas(bool cursorOnCanvas);
@@ -172,10 +182,12 @@ private:
 	QString m_currentLayerTitle;
 	QHash<int, UserMarkerItem *> m_userMarkers;
 	QHash<int, LaserTrailItem *> m_activeLaserTrails;
+	QHash<int, VectorShapeItem *> m_vectorShapes;
 
 	AnchorLineItem *m_anchorLine = nullptr;
 	MaskPreviewItem *m_maskPreview = nullptr;
 	PathPreviewItem *m_pathPreview = nullptr;
+	VectorShapeItem *m_vectorShapePreview = nullptr;
 	SelectionItem *m_selection = nullptr;
 	TransformItem *m_transform = nullptr;
 	PivotItem *m_pivot = nullptr;

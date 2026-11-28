@@ -14,6 +14,7 @@ extern "C" {
 #include "desktop/scene/selectionitem.h"
 #include "desktop/scene/transformitem.h"
 #include "desktop/scene/usermarkeritem.h"
+#include "desktop/scene/vectorshapeitem.h"
 #include "desktop/utils/widgetutils.h"
 #include "desktop/view/canvasscene.h"
 #include "libclient/canvas/canvasmodel.h"
@@ -94,6 +95,7 @@ void CanvasScene::setCanvasModel(canvas::CanvasModel *canvasModel)
 		pe, &canvas::PaintEngine::annotationsChanged, this,
 		&CanvasScene::onAnnotationsChanged);
 
+	clearVectorShapes();
 	for(QGraphicsItem *item : m_canvasGroup->childItems()) {
 		if(item->type() == AnnotationItem::Type ||
 		   item->type() == UserMarkerItem::Type ||
@@ -317,6 +319,49 @@ void CanvasScene::setPathPreview(const QPainterPath &path)
 		m_pathPreview = new PathPreviewItem(path, m_zoom, m_canvasGroup);
 		m_pathPreview->setUpdateSceneOnRefresh(true);
 	}
+}
+
+void CanvasScene::setVectorShapePreview(const tools::VectorShape &shape)
+{
+	if(shape.path.isEmpty()) {
+		delete m_vectorShapePreview;
+		m_vectorShapePreview = nullptr;
+	} else if(m_vectorShapePreview) {
+		m_vectorShapePreview->setShape(shape);
+	} else {
+		m_vectorShapePreview = new VectorShapeItem(shape, m_canvasGroup);
+		m_vectorShapePreview->setUpdateSceneOnRefresh(true);
+	}
+}
+
+void CanvasScene::addVectorShape(const tools::VectorShape &shape)
+{
+	if(shape.id <= 0 || shape.path.isEmpty()) {
+		return;
+	}
+
+	auto it = m_vectorShapes.constFind(shape.id);
+	if(it != m_vectorShapes.constEnd()) {
+		it.value()->setShape(shape);
+		return;
+	}
+
+	VectorShapeItem *item = new VectorShapeItem(shape, m_canvasGroup);
+	item->setUpdateSceneOnRefresh(true);
+	m_vectorShapes.insert(shape.id, item);
+}
+
+void CanvasScene::removeVectorShape(int id)
+{
+	delete m_vectorShapes.take(id);
+}
+
+void CanvasScene::clearVectorShapes()
+{
+	qDeleteAll(m_vectorShapes);
+	m_vectorShapes.clear();
+	delete m_vectorShapePreview;
+	m_vectorShapePreview = nullptr;
 }
 
 void CanvasScene::setCursorOnCanvas(bool cursorOnCanvas)

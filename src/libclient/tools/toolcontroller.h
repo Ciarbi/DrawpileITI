@@ -4,12 +4,14 @@
 #include "libclient/brushes/brush.h"
 #include "libclient/canvas/acl.h"
 #include "libclient/tools/tool.h"
+#include "libclient/tools/vectorshape.h"
 #include "libclient/utils/kis_cubic_curve.h"
 #include <QColor>
 #include <QObject>
 #include <QPainterPath>
 #include <QSet>
 #include <QThreadPool>
+#include <QVector>
 
 class QCursor;
 struct DP_BrushEngineStrokeParams;
@@ -213,6 +215,18 @@ public:
 	 */
 	void offsetActiveTool(int xOffset, int yOffset);
 
+	//! Add a vector shape to this document's local overlay layer.
+	int addVectorShape(
+		const QPainterPath &path, const QColor &color, qreal width, bool fill);
+
+	//! Local vector history, applied before the protocol undo/redo path.
+	bool undoVectorShape();
+	bool redoVectorShape();
+
+	void removeVectorShape(int id);
+	void clearVectorShapes();
+	const QVector<VectorShape> &vectorShapes() const { return m_vectorShapes; }
+
 	/**
 	 * Set the active brush in the Drawdance brush engine.
 	 *
@@ -339,6 +353,10 @@ signals:
 	void anchorLineActiveIndexRequested(int activeIndex);
 	void maskPreviewRequested(const QPoint &pos, const QImage &mask);
 	void pathPreviewRequested(const QPainterPath &path);
+	void vectorShapePreviewRequested(const VectorShape &shape);
+	void vectorShapeAdded(const VectorShape &shape);
+	void vectorShapeRemoved(int id);
+	void vectorShapesCleared();
 	void selectRequested(int type);
 	void transformRequested(bool maskOnly, bool startMove, bool quickMove);
 	void toolSwitchRequested(tools::Tool::Type tool);
@@ -398,6 +416,9 @@ private:
 	int m_activeAnnotation;
 	int m_freehandRightClickAction;
 	QSet<int> m_selectedLayers;
+	QVector<VectorShape> m_vectorShapes;
+	QVector<VectorShape> m_redoVectorShapes;
+	int m_nextVectorShapeId = 1;
 	QColor m_foregroundColor = Qt::black;
 	QColor m_backgroundColor = Qt::white;
 	QColor m_selectionMaskColor = QColor(0, 170, 255);

@@ -1,50 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "libclient/tools/shapetools.h"
-#include "libclient/canvas/canvasmodel.h"
-#include "libclient/canvas/paintengine.h"
 #include "libclient/tools/toolcontroller.h"
 #include "libclient/tools/utils.h"
 #include "libclient/utils/cursors.h"
 
 namespace tools {
 
-class PointVectorGenerator {
-public:
-	PointVectorGenerator() {}
-
-	void append(const QPointF &point)
-	{
-		if(!m_pv.isEmpty()) {
-			// MyPaint brushes don't take kindly to unnatural delta times. Very
-			// short ones cause weird brush behavior and long ones (5 seconds+)
-			// cause them to not draw the stroke at all. So we interpolate.
-			QLineF line(m_pv.last(), point);
-			int segments = qCeil(line.length() / SEGMENT_LENGTH);
-			for(int i = 1; i < segments; ++i) {
-				appendPoint(line.pointAt(1.0 / qreal(segments) * qreal(i)));
-			}
-		}
-		appendPoint(point);
+static qreal brushWidth(const brushes::ActiveBrush &brush)
+{
+	qreal width;
+	switch(brush.activeType()) {
+	case brushes::ActiveBrush::CLASSIC:
+		width = brush.classic().size.max;
+		break;
+	case brushes::ActiveBrush::MYPAINT:
+		width = DP_mypaint_settings_max_size_for(
+			&brush.myPaint().constSettings(), 1.0f);
+		break;
+	default:
+		width = 1.0;
+		break;
 	}
-
-	const canvas::PointVector &pv() { return m_pv; }
-
-private:
-	static constexpr qreal SEGMENT_LENGTH = 10.0;
-	static constexpr qreal DTIME = 10.0;
-
-	void appendPoint(const QPointF &point)
-	{
-		canvas::Point cp(m_time, point, 1.0);
-		if(!m_pv.isEmpty()) {
-			m_time += canvas::Point::distance(m_pv.last(), cp) * DTIME;
-		}
-		m_pv.append(cp);
-	}
-
-	long long m_time = 0LL;
-	canvas::PointVector m_pv;
-};
+	return qMax(qreal(1.0), width);
+}
 
 void ShapeTool::begin(const BeginParams &params)
 {
@@ -58,10 +36,7 @@ void ShapeTool::begin(const BeginParams &params)
 	m_current = point;
 	m_p1 = point;
 	m_p2 = point;
-	m_zoom = params.zoom;
 	m_angle = params.angle;
-	m_mirror = params.mirror;
-	m_flip = params.flip;
 	m_drawing = true;
 
 	updatePreview();
@@ -84,15 +59,29 @@ void ShapeTool::modify(const ModifyParams &params)
 	}
 }
 
+void ShapeTool::end(const EndParams &params)
+{
+	if(!m_drawing) {
+		return;
+	}
+
+	updateShape(params.constrain, params.center);
+	m_drawing = false;
+
+	VectorShape shape = vectorShape(0);
+	m_owner.addVectorShape(shape.path, shape.color, shape.width, shape.fill);
+	clearPreview();
+}
+
 void ShapeTool::cancelMultipart()
 {
-	m_owner.model()->paintEngine()->clearDabsPreview();
+	clearPreview();
 	m_drawing = false;
 }
 
 void ShapeTool::setBrushSizeLimit(int limit)
 {
-	m_brushEngine.setSizeLimit(limit);
+	m_sizeLimit = limit;
 }
 
 void ShapeTool::setSelectionMaskingEnabled(bool selectionMaskingEnabled)
@@ -100,55 +89,36 @@ void ShapeTool::setSelectionMaskingEnabled(bool selectionMaskingEnabled)
 	setCapability(Capability::IgnoresSelections, !selectionMaskingEnabled);
 }
 
-void ShapeTool::end(const EndParams &params)
-{
-	if(m_drawing) {
-		updateShape(params.constrain, params.center);
-		m_drawing = false;
-
-		canvas::PaintEngine *paintEngine = m_owner.model()->paintEngine();
-		drawdance::CanvasState canvasState = paintEngine->sampleCanvasState();
-
-		m_owner.setBrushEngineBrush(m_brushEngine, type());
-
-		const canvas::PointVector pv = pointVector();
-		m_brushEngine.beginStroke(
-			localUserId(), canvasState, isCompatibilityMode(), true, m_mirror,
-			m_flip, m_zoom, m_angle);
-		for(const canvas::Point &p : pv) {
-			m_brushEngine.strokeTo(p, canvasState);
-		}
-		m_brushEngine.endStroke(pv.last().timeMsec() + 10, canvasState, true);
-
-		paintEngine->clearDabsPreview();
-		m_brushEngine.sendMessagesTo(m_owner.client());
-	}
-}
-
 QPointF ShapeTool::getConstrainPoint() const
 {
 	return constraints::square(m_start, m_current);
 }
 
+VectorShape ShapeTool::vectorShape(int id) const
+{
+	const brushes::ActiveBrush &brush = m_owner.activeBrush();
+	VectorShape shape;
+	shape.id = id;
+	shape.path = path();
+	shape.color = brush.qColor();
+	shape.width = brushWidth(brush);
+	if(m_sizeLimit > 0 && shape.width > m_sizeLimit) {
+		shape.width = m_sizeLimit;
+	}
+	shape.fill = false;
+	return shape;
+}
+
+void ShapeTool::clearPreview()
+{
+	VectorShape shape;
+	shape.id = 0;
+	emit m_owner.vectorShapePreviewRequested(shape);
+}
+
 void ShapeTool::updatePreview()
 {
-	m_owner.setBrushEngineBrush(m_brushEngine, type());
-	canvas::PaintEngine *paintEngine = m_owner.model()->paintEngine();
-	drawdance::CanvasState canvasState = paintEngine->sampleCanvasState();
-
-	const canvas::PointVector pv = pointVector();
-	Q_ASSERT(pv.count() > 1);
-	m_brushEngine.beginStroke(
-		localUserId(), canvasState, isCompatibilityMode(), false, m_mirror,
-		m_flip, m_zoom, m_angle);
-	for(const canvas::Point &p : pv) {
-		m_brushEngine.strokeTo(p, canvasState);
-	}
-	m_brushEngine.endStroke(pv.last().timeMsec() + 10, canvasState, false);
-
-	paintEngine->previewDabs(
-		m_owner.activeLayerOrSelection(), m_brushEngine.messages());
-	m_brushEngine.clearMessages();
+	emit m_owner.vectorShapePreviewRequested(vectorShape(0));
 }
 
 void ShapeTool::updateShape(bool constrain, bool center)
@@ -162,12 +132,12 @@ Line::Line(ToolController &owner, DP_MaskSync *ms)
 {
 }
 
-canvas::PointVector Line::pointVector() const
+QPainterPath Line::path() const
 {
-	PointVectorGenerator gen;
-	gen.append(m_p1);
-	gen.append(m_p2);
-	return gen.pv();
+	QPainterPath path;
+	path.moveTo(m_p1);
+	path.lineTo(m_p2);
+	return path;
 }
 
 QPointF Line::getConstrainPoint() const
@@ -180,15 +150,15 @@ Rectangle::Rectangle(ToolController &owner, DP_MaskSync *ms)
 {
 }
 
-canvas::PointVector Rectangle::pointVector() const
+QPainterPath Rectangle::path() const
 {
-	PointVectorGenerator gen;
-	gen.append(m_p1);
-	gen.append(QPointF(m_p1.x(), m_p2.y()));
-	gen.append(m_p2);
-	gen.append(QPointF(m_p2.x(), m_p1.y()));
-	gen.append(QPointF(m_p1.x(), m_p1.y()));
-	return gen.pv();
+	QPainterPath path;
+	path.moveTo(m_p1);
+	path.lineTo(QPointF(m_p1.x(), m_p2.y()));
+	path.lineTo(m_p2);
+	path.lineTo(QPointF(m_p2.x(), m_p1.y()));
+	path.closeSubpath();
+	return path;
 }
 
 Ellipse::Ellipse(ToolController &owner, DP_MaskSync *ms)
@@ -196,30 +166,17 @@ Ellipse::Ellipse(ToolController &owner, DP_MaskSync *ms)
 {
 }
 
-canvas::PointVector Ellipse::pointVector() const
+QPainterPath Ellipse::path() const
 {
 	QRectF r = rect();
-	qreal a = r.width() / 2.0;
-	qreal b = r.height() / 2.0;
-	qreal cx = r.x() + a;
-	qreal cy = r.y() + b;
-	PointVectorGenerator gen;
-
-	qreal radius = (a + b) / 2.0;
-	qreal step;
-	if(radius > 2.0) {
-		qreal t = 1.0 - 0.33 / radius;
-		step = std::acos(2.0 * t * t - 1.0);
+	QPainterPath path;
+	if(r.isEmpty()) {
+		path.moveTo(m_p1);
+		path.lineTo(m_p2);
 	} else {
-		step = M_PI / 4.0;
+		path.addEllipse(r);
 	}
-
-	for(qreal t = 0.0; t < 2.0 * M_PI; t += step) {
-		gen.append(QPointF(cx + a * cos(t), cy + b * sin(t)));
-	}
-	gen.append(QPointF(cx + a, cy));
-
-	return gen.pv();
+	return path;
 }
 
 Triangle::Triangle(ToolController &owner, DP_MaskSync *ms)
@@ -227,18 +184,15 @@ Triangle::Triangle(ToolController &owner, DP_MaskSync *ms)
 {
 }
 
-canvas::PointVector Triangle::pointVector() const
+QPainterPath Triangle::path() const
 {
 	QRectF r = rect();
-	QPointF top(r.center().x(), r.top());
-	QPointF bottomLeft(r.left(), r.bottom());
-	QPointF bottomRight(r.right(), r.bottom());
-	PointVectorGenerator gen;
-	gen.append(top);
-	gen.append(bottomRight);
-	gen.append(bottomLeft);
-	gen.append(top);
-	return gen.pv();
+	QPainterPath path;
+	path.moveTo(QPointF(r.center().x(), r.top()));
+	path.lineTo(QPointF(r.right(), r.bottom()));
+	path.lineTo(QPointF(r.left(), r.bottom()));
+	path.closeSubpath();
+	return path;
 }
 
 Diamond::Diamond(ToolController &owner, DP_MaskSync *ms)
@@ -246,20 +200,16 @@ Diamond::Diamond(ToolController &owner, DP_MaskSync *ms)
 {
 }
 
-canvas::PointVector Diamond::pointVector() const
+QPainterPath Diamond::path() const
 {
 	QRectF r = rect();
-	QPointF top(r.center().x(), r.top());
-	QPointF right(r.right(), r.center().y());
-	QPointF bottom(r.center().x(), r.bottom());
-	QPointF left(r.left(), r.center().y());
-	PointVectorGenerator gen;
-	gen.append(top);
-	gen.append(right);
-	gen.append(bottom);
-	gen.append(left);
-	gen.append(top);
-	return gen.pv();
+	QPainterPath path;
+	path.moveTo(QPointF(r.center().x(), r.top()));
+	path.lineTo(QPointF(r.right(), r.center().y()));
+	path.lineTo(QPointF(r.center().x(), r.bottom()));
+	path.lineTo(QPointF(r.left(), r.center().y()));
+	path.closeSubpath();
+	return path;
 }
 
 }

@@ -34,7 +34,7 @@ void *ZipReader::File::content() const
 QByteArray ZipReader::File::readBytes() const
 {
 	if(m_zrf) {
-		return QByteArray::fromRawData(
+		return QByteArray(
 			static_cast<const char *>(DP_zip_reader_file_content(m_zrf)),
 			compat::castSize(DP_zip_reader_file_size(m_zrf)));
 	} else {

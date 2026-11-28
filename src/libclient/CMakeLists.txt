@@ -221,6 +221,7 @@ target_sources(dpclient PRIVATE
 	tools/tool.h
 	tools/toolcontroller.cpp
 	tools/toolcontroller.h
+	tools/vectorshape.h
 	tools/toolproperties.cpp
 	tools/toolproperties.h
 	tools/transform.cpp
