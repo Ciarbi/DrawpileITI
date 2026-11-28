@@ -23,6 +23,7 @@
 #include <QVector>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <dpcommon/platform_qt.h>
 #include <zlib.h>
 
@@ -3232,8 +3233,7 @@ QJsonObject KritaBrushConverter::presetToMyPaintMapping(
 		myPaintDynamicInput(classic, QStringLiteral("smudge"));
 
 	QJsonObject mapping;
-	double radius = qBound(
-		-2.0, qLn(size) / qLn(2.0) - 1.0, 6.0);
+	double radius = qBound(-2.0, std::log2(size) - 1.0, 6.0);
 	addMyPaintSetting(
 		mapping, QStringLiteral("radius_logarithmic"), radius, sizeInput,
 		kritaCurveToMyPaintPoints(
